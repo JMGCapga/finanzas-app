@@ -85,7 +85,9 @@
         { id: "m4", cuentaId: "c1", fecha: "2026-08-28", concepto: "Nómina", monto: 44232.9, tipo: "recibi", medio: "nómina", creado: 1726248000000 },
         { id: "m5", cuentaId: "c1", fecha: "2026-09-08", concepto: "Entregas julio-agosto: efectivo, transferencias, descuentos de deuda", monto: 181000, tipo: "entregue", medio: "acumulado", creado: 1725811200000 },
       ],
-      cortes: [{ id: "corte1", cuentaId: "c1", fecha: "2026-09-08", saldo: 4068.42, liquidado: false }],
+      cortes: [
+        { id: "corte1", cuentaId: "c1", fecha: "2026-09-08", saldo: 4068.42, liquidado: false },
+      ],
       obligaciones: [],
       pendientes: [],
     };
@@ -102,6 +104,115 @@
       const [a, m, d] = f.split("-");
       return `${d}/${m}`;
     };
+
+    function descargarEstadoDeCuenta(cuenta, movimientos, saldoFinal) {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      const ancho = 900;
+      const alto = 1200;
+      canvas.width = ancho;
+      canvas.height = alto;
+
+      // Fondo blanco
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, ancho, alto);
+
+      // Encabezado
+      ctx.fillStyle = "#0A0E27";
+      ctx.font = "bold 28px Arial";
+      ctx.fillText("ESTADO DE CUENTA", 40, 60);
+      ctx.font = "20px Arial";
+      ctx.fillText(cuenta.nombre + " — " + cuenta.rol, 40, 100);
+
+      // Fecha
+      ctx.font = "12px Arial";
+      ctx.fillStyle = "#666";
+      const hoy = new Date().toLocaleDateString("es-MX");
+      ctx.fillText("Generado: " + hoy, 40, 130);
+
+      // Tabla
+      const filaAltura = 40;
+      const colFecha = 40;
+      const colConcepto = 140;
+      const colRecibiste = 620;
+      const colEntregaste = 750;
+      const colSaldo = 850;
+
+      let y = 180;
+
+      // Headers
+      ctx.fillStyle = "#0A0E27";
+      ctx.font = "bold 12px Arial";
+      ctx.fillText("Fecha", colFecha, y);
+      ctx.fillText("Concepto", colConcepto, y);
+      ctx.fillText("Recibiste", colRecibiste, y);
+      ctx.fillText("Entregaste", colEntregaste, y);
+      ctx.fillText("Saldo", colSaldo, y);
+
+      // Línea de separación
+      ctx.strokeStyle = "#CCC";
+      ctx.beginPath();
+      ctx.moveTo(40, y + 10);
+      ctx.lineTo(ancho - 40, y + 10);
+      ctx.stroke();
+
+      y += 40;
+
+      // Movimientos
+      let saldoAcumulado = 0;
+      ctx.font = "11px Arial";
+      ctx.fillStyle = "#333";
+
+      movimientos.forEach((mov) => {
+        saldoAcumulado += efecto(mov);
+
+        const fecha = fechaCorta(mov.fecha);
+        const concepto = mov.concepto.substring(0, 40);
+        const recibiste = mov.tipo === "recibi" ? mxn(mov.monto) : "";
+        const entregaste = mov.tipo === "entregue" ? mxn(mov.monto) : "";
+        const saldo = mxn(saldoAcumulado);
+
+        ctx.fillText(fecha, colFecha, y);
+        ctx.fillText(concepto, colConcepto, y);
+        ctx.fillStyle = mov.tipo === "recibi" ? "#10B981" : "#333";
+        ctx.fillText(recibiste, colRecibiste, y);
+        ctx.fillStyle = mov.tipo === "entregue" ? "#EF4444" : "#333";
+        ctx.fillText(entregaste, colEntregaste, y);
+        ctx.fillStyle = saldoAcumulado < 0 ? "#EF4444" : "#10B981";
+        ctx.fillText(saldo, colSaldo, y);
+
+        y += filaAltura;
+        ctx.fillStyle = "#333";
+      });
+
+      // Línea final
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(40, y);
+      ctx.lineTo(ancho - 40, y);
+      ctx.stroke();
+
+      y += 30;
+
+      // Saldo final grande
+      ctx.font = "bold 16px Arial";
+      ctx.fillStyle = saldoFinal < 0 ? "#EF4444" : "#10B981";
+      const textoSaldo = saldoFinal < 0 ? "DEBE: " + mxn(-saldoFinal) : "A FAVOR: " + mxn(saldoFinal);
+      ctx.fillText(textoSaldo, 40, y);
+
+      // Descargar
+      canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `cuenta-${cuenta.nombre}-${hoy.replace(/\//g, "-")}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    }
 
     function FinanzasApp() {
       const [data, setData] = useState(null);
@@ -179,6 +290,23 @@
         }
       };
 
+      const importarJSON = () => {
+        const textarea = document.getElementById("jsonInput");
+        if (!textarea || !textarea.value.trim()) {
+          alert("Pegá el JSON primero");
+          return;
+        }
+        try {
+          const importedData = JSON.parse(textarea.value);
+          setData(importedData);
+          guardar(importedData);
+          textarea.value = "";
+          alert("✅ Datos importados correctamente");
+        } catch (err) {
+          alert("❌ El JSON no es válido. Revisá que esté bien pegado.");
+        }
+      };
+
       if (cargando)
         return (
           <div style={{ background: COLORES.fondo, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: COLORES.textoSecundario }}>
@@ -227,24 +355,68 @@
             </header>
 
             {/* importar json */}
-            <div
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-              style={{
-                border: `2px dashed ${dragActive ? COLORES.acento : COLORES.borde}`,
-                borderRadius: 12,
-                padding: 24,
-                background: dragActive ? COLORES.fondoHover : "transparent",
-                marginBottom: 32,
-                transition: "all 0.2s",
-                textAlign: "center",
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ fontSize: 13, color: dragActive ? COLORES.acento : COLORES.textoSecundario }}>
-                💾 Arrastra un archivo JSON aquí para importar datos
+            <div style={{ marginBottom: 32 }}>
+              <div style={{ marginBottom: 16 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: COLORES.textoSecundario, marginBottom: 8 }}>💾 Importar datos</h3>
+              </div>
+
+              {/* Drag & drop */}
+              <div
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                style={{
+                  border: `2px dashed ${dragActive ? COLORES.acento : COLORES.borde}`,
+                  borderRadius: 12,
+                  padding: 24,
+                  background: dragActive ? COLORES.fondoHover : "transparent",
+                  marginBottom: 12,
+                  transition: "all 0.2s",
+                  textAlign: "center",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ fontSize: 13, color: dragActive ? COLORES.acento : COLORES.textoSecundario }}>
+                  Arrastra un JSON aquí
+                </div>
+              </div>
+
+              {/* Pegar JSON */}
+              <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 16 }}>
+                <label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 8 }}>O pega el JSON aquí:</label>
+                <textarea
+                  id="jsonInput"
+                  placeholder='Pegá el contenido del JSON (ejemplo: {"cuentas": [...], "movimientos": [...]})'
+                  style={{
+                    width: "100%",
+                    height: 150,
+                    padding: 12,
+                    fontSize: 12,
+                    fontFamily: "monospace",
+                    background: COLORES.fondo,
+                    border: `1px solid ${COLORES.borde}`,
+                    color: COLORES.texto,
+                    borderRadius: 8,
+                    marginBottom: 12,
+                    resize: "none",
+                  }}
+                />
+                <button
+                  onClick={() => importarJSON()}
+                  style={{
+                    background: COLORES.acento,
+                    color: COLORES.fondo,
+                    padding: "8px 16px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    border: "none",
+                  }}
+                >
+                  ✅ Importar JSON
+                </button>
               </div>
             </div>
 
@@ -393,9 +565,26 @@
             ) : (
               <>
                 <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>{cuenta.nombre}</h2>
-                <p style={{ fontSize: 14, color: COLORES.textoSecundario, marginBottom: 24 }}>
-                  Saldo: <span style={{ color: saldoActual < 0 ? COLORES.acentoRojo : COLORES.acentoVerde, fontWeight: 600 }}>{mxn(saldoActual)}</span>
-                </p>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                  <p style={{ fontSize: 14, color: COLORES.textoSecundario }}>
+                    Saldo: <span style={{ color: saldoActual < 0 ? COLORES.acentoRojo : COLORES.acentoVerde, fontWeight: 600 }}>{mxn(saldoActual)}</span>
+                  </p>
+                  <button
+                    onClick={() => descargarEstadoDeCuenta(cuenta, movsDeCuenta, saldoActual)}
+                    style={{
+                      background: COLORES.acento,
+                      color: COLORES.fondo,
+                      padding: "8px 16px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      border: "none",
+                    }}
+                  >
+                    📥 Descargar estado
+                  </button>
+                </div>
 
                 <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
