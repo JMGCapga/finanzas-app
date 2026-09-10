@@ -6,6 +6,7 @@
   <title>Finanzas — Control de operación</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     * {
@@ -51,7 +52,7 @@
       borde: "#1E3A5F",
     };
 
-    async function cargar() {
+    function cargar() {
       try {
         const data = localStorage.getItem(KEY);
         if (data) return JSON.parse(data);
@@ -59,7 +60,7 @@
       return null;
     }
 
-    async function guardar(data) {
+    function guardar(data) {
       try {
         localStorage.setItem(KEY, JSON.stringify(data));
         return true;
@@ -77,8 +78,14 @@
         { id: "c5", nombre: "Cemcoyaa", rol: "Razón social", nota: "" },
         { id: "c6", nombre: "Itzayana", rol: "Razón social", nota: "" },
       ],
-      movimientos: [],
-      cortes: [],
+      movimientos: [
+        { id: "m1", cuentaId: "c1", fecha: "2026-07-13", concepto: "Nómina", monto: 47470.64, tipo: "recibi", medio: "nómina", creado: 1725811200000 },
+        { id: "m2", cuentaId: "c1", fecha: "2026-07-28", concepto: "Nómina", monto: 40995.15, tipo: "recibi", medio: "nómina", creado: 1725897600000 },
+        { id: "m3", cuentaId: "c1", fecha: "2026-08-13", concepto: "Nómina", monto: 44232.89, tipo: "recibi", medio: "nómina", creado: 1726161600000 },
+        { id: "m4", cuentaId: "c1", fecha: "2026-08-28", concepto: "Nómina", monto: 44232.9, tipo: "recibi", medio: "nómina", creado: 1726248000000 },
+        { id: "m5", cuentaId: "c1", fecha: "2026-09-08", concepto: "Entregas julio-agosto: efectivo, transferencias, descuentos de deuda", monto: 181000, tipo: "entregue", medio: "acumulado", creado: 1725811200000 },
+      ],
+      cortes: [{ id: "corte1", cuentaId: "c1", fecha: "2026-09-08", saldo: 4068.42, liquidado: false }],
       obligaciones: [],
       pendientes: [],
     };
