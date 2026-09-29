@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Finanzas</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0A0E27; color: #E8E9F0; }
+    input[type=number] { -moz-appearance: textfield; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+    const SUPABASE_URL = "https://oqwbyvjgyvlmofxbgvar.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_lnovL7ZW22et_KNVw2Gj3Q_QESsrYvs";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const KEY = "finanzas-app:v5";
+    const COLORES = {
+      fondo: "#0A0E27",
+      fondoCard: "#111B3C",
+      texto: "#E8E9F0",
+      textoSecundario: "#8B90AA",
+      acento: "#00D9FF",
+      acentoVerde: "#10B981",
+      acentoRojo: "#F87171",
+      borde: "#223459"
+    };
+
+    function FinanzasApp() {
+      const [data, setData] = useState({ cuentas: [], movimientos: [], obligaciones: [], pendientes: [] });
+      const [vistaActiva, setVistaActiva] = useState("dashboard");
+      const [cuentaActiva, setCuentaActiva] = useState(null);
+
+      useEffect(() => {
+        const cargar = async () => {
+          const [c, m, o, p] = await Promise.all([
+            supabase.from("cuentas").select("*"),
+            supabase.from("movimientos").select("*"),
+            supabase.from("obligaciones").select("*"),
+            supabase.from("pendientes").select("*")
+          ]);
+          setData({
+            cuentas: c.data || [],
+            movimientos: m.data || [],
+            obligaciones: o.data || [],
+            pendientes: p.data || []
+          });
+          if (c.data?.length) setCuentaActiva(c.data[0].id);
+        };
+        cargar();
+
+        const sub = supabase.on("*", { event: "*" }, () => cargar()).subscribe();
+        return () => supabase.removeChannel(sub);
+      }, []);
+
+      const cuenta = data.cuentas.find(c => c.id === cuentaActiva);
+
+      return (
+        <div style={{ display: "flex", height: "100vh", background: COLORES.fondo }}>
+          <div style={{ width: 350, background: COLORES.fondoCard, borderRight: `1px solid ${COLORES.borde}`, overflowY: "auto", padding: "20px" }}>
+            <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Finanzas</h1>
+            <p style={{ fontSize: 13, color: COLORES.textoSecundario, marginBottom: 24 }}>Control total de tu operación — sincronizado en tiempo real. 🔄</p>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 32, flexWrap: "wrap" }}>
+              {["dashboard", "libreta", "obligaciones", "cruces", "pendientes"].map((v) => (
+                <button key={v} onClick={() => setVistaActiva(v)} style={{
+                  background: vistaActiva === v ? COLORES.acento : "transparent",
+                  color: vistaActiva === v ? COLORES.fondo : COLORES.texto,
+                  border: `1px solid ${vistaActiva === v ? COLORES.acento : COLORES.borde}`,
+                  padding: "8px 12px",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  textTransform: "capitalize"
+                }}>
+                  {v === "dashboard" && "📊"} {v === "libreta" && "📖"} {v === "obligaciones" && "💰"} {v === "cruces" && "🔀"} {v === "pendientes" && "⏳"} {v}
+                </button>
+              ))}
+            </div>
+
+            <h3 style={{ fontSize: 12, fontWeight: 700, color: COLORES.textoSecundario, marginBottom: 12, textTransform: "uppercase" }}>Cuentas</h3>
+            {data.cuentas.map((c) => (
+              <button key={c.id} onClick={() => setCuentaActiva(c.id)} style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "12px 14px",
+                background: c.id === cuentaActiva ? COLORES.fondoCard : "transparent",
+                border: `1px solid ${c.id === cuentaActiva ? COLORES.acento : "transparent"}`,
+                borderRadius: 8,
+                marginBottom: 6,
+                cursor: "pointer",
+                transition: "all 0.2s"
+              }}>
+                <div style={{ fontSize: 14, fontWeight: c.id === cuentaActiva ? 600 : 400, color: COLORES.texto }}>{c.nombre}</div>
+                <div style={{ fontSize: 11, color: COLORES.textoSecundario, marginTop: 4 }}>{c.rol}</div>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: "40px" }}>
+            {vistaActiva === "libreta" && cuenta && (
+              <div>
+                <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 24 }}>{cuenta.nombre}</h2>
+                <p style={{ fontSize: 14, color: COLORES.textoSecundario }}>Saldo actual: <span style={{ color: COLORES.acentoVerde, fontWeight: 600 }}>$0.00</span></p>
+                <p style={{ marginTop: 20, color: COLORES.textoSecundario }}>Libreta sin datos</p>
+              </div>
+            )}
+            {vistaActiva === "dashboard" && (
+              <div>
+                <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 24 }}>Dashboard</h2>
+                <p style={{ color: COLORES.textoSecundario }}>Selecciona una vista</p>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<FinanzasApp />);
+  </script>
+</body>
+</html>
