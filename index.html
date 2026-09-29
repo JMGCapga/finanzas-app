@@ -1,53 +1,711 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Finanzas</title>
-  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Finanzas — Control de operación</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: sans-serif; background: #0A0E27; color: white; padding: 20px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #0A0E27; color: #FFFFFF; }
+    input, select, button { font-family: inherit; }
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useMemo, useRef } = React;
     const SUPABASE_URL = "https://oqwbyvjgyvlmofxbgvar.supabase.co";
     const SUPABASE_KEY = "sb_publishable_lnovL7ZW22et_KNVw2Gj3Q_QESsrYvs";
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    function App() {
-      const [cuentas, setCuentas] = useState([]);
+    const KEY = "finanzas-app:v5";
+    const COLORES = { fondo: "#0A0E27", fondoCard: "#111B3C", fondoHover: "#1A2847", texto: "#FFFFFF", textoSecundario: "#A0AEC0", acento: "#00D9FF", acentoVerde: "#10B981", acentoRojo: "#EF4444", accentoOrange: "#F97316", borde: "#1E3A5F" };
+    function cargar() { try { const data = localStorage.getItem(KEY); if (data) return JSON.parse(data); } catch (e) {} return null; }
+    function guardar(data) { try { localStorage.setItem(KEY, JSON.stringify(data)); return true; } catch (e) { return false; } }
+    const SEMILLA = { cuentas: [ { id: "c1", nombre: "Hermano", rol: "Edgar · Nómina", nota: "" }, { id: "c2", nombre: "Lalo", rol: "Primo · Cliente", nota: "" }, { id: "c3", nombre: "Papá", rol: "Familia", nota: "" }, { id: "c4", nombre: "JMGC", rol: "Razón social", nota: "" }, { id: "c5", nombre: "Cemcoyaa", rol: "Razón social", nota: "" }, { id: "c6", nombre: "Itzayana", rol: "Razón social", nota: "" } ], movimientos: [ { id: "m1", cuentaId: "c1", fecha: "2026-07-13", concepto: "Nómina", monto: 47470.64, tipo: "recibi", medio: "nómina", creado: 1725811200000 }, { id: "m2", cuentaId: "c1", fecha: "2026-07-28", concepto: "Nómina", monto: 40995.15, tipo: "recibi", medio: "nómina", creado: 1725897600000 }, { id: "m3", cuentaId: "c1", fecha: "2026-08-13", concepto: "Nómina", monto: 44232.89, tipo: "recibi", medio: "nómina", creado: 1726161600000 }, { id: "m4", cuentaId: "c1", fecha: "2026-08-28", concepto: "Nómina", monto: 44232.9, tipo: "recibi", medio: "nómina", creado: 1726248000000 }, { id: "m5", cuentaId: "c1", fecha: "2026-09-08", concepto: "Entregas julio-agosto: efectivo, transferencias, descuentos de deuda", monto: 181000, tipo: "entregue", medio: "acumulado", creado: 1725811200000 } ], obligaciones: [], pendientes: [] };
+    const mxn = (n) => (n < 0 ? "-" : "") + "$" + Math.abs(n).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const hoy = () => new Date().toISOString().slice(0, 10);
+    const uid = () => Math.random().toString(36).slice(2, 10);
+    const efecto = (mov) => (mov.tipo === "recibi" ? -mov.monto : mov.monto);
+    const fechaCorta = (f) => { const [a, m, d] = f.split("-"); return `${d}/${m}`; };
+    
+    function FinanzasApp() {
+      const [data, setData] = useState(() => { const local = cargar(); return local || SEMILLA; });
+      const [cuentas, setCuentas] = useState(data.cuentas);
+      const [movimientos, setMovimientos] = useState(data.movimientos);
+      const [obligaciones, setObligaciones] = useState(data.obligaciones);
+      const [pendientes, setPendientes] = useState(data.pendientes);
+      const [vista, setVista] = useState("libreta");
+      const [cuentaActiva, setCuentaActiva] = useState(data.cuentas?.[0]?.id);
 
       useEffect(() => {
-        const load = async () => {
-          const { data } = await supabase.from("cuentas").select("*");
-          setCuentas(data || []);
-        };
-        load();
-      }, []);
+        const newData = { cuentas, movimientos, obligaciones, pendientes };
+        setData(newData);
+        guardar(newData);
+        const canal = supabase.channel("db-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "movimientos" }, (payload) => {
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              setMovimientos((prev) => { const existe = prev.find((m) => m.id === payload.new.id); if (existe) return prev.map((m) => (m.id === payload.new.id ? payload.new : m)); return [...prev, payload.new]; });
+            } else if (payload.eventType === "DELETE") {
+              setMovimientos((prev) => prev.filter((m) => m.id !== payload.old.id));
+            }
+          })
+          .on("postgres_changes", { event: "*", schema: "public", table: "cuentas" }, (payload) => {
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              setCuentas((prev) => { const existe = prev.find((c) => c.id === payload.new.id); if (existe) return prev.map((c) => (c.id === payload.new.id ? payload.new : c)); return [...prev, payload.new]; });
+            }
+          })
+          .on("postgres_changes", { event: "*", schema: "public", table: "pendientes" }, (payload) => {
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              setPendientes((prev) => { const existe = prev.find((p) => p.id === payload.new.id); if (existe) return prev.map((p) => (p.id === payload.new.id ? payload.new : p)); return [...prev, payload.new]; });
+            } else if (payload.eventType === "DELETE") {
+              setPendientes((prev) => prev.filter((p) => p.id !== payload.old.id));
+            }
+          })
+          .subscribe();
+        return () => { canal.unsubscribe(); };
+      }, [cuentas, movimientos, obligaciones, pendientes]);
 
       return (
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30 }}>
+            <div><h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 4 }}>Finanzas</h1><p style={{ fontSize: 14, color: COLORES.textoSecundario }}>Control de operación — JMGC</p></div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: `1px solid ${COLORES.borde}`, paddingBottom: 16 }}>
+            {[{ id: "libreta", label: "📖 Libretas" }, { id: "cruces", label: "🔀 Cruces" }, { id: "obligaciones", label: "📋 Obligaciones" }, { id: "pendientes", label: "✓ Pendientes" }].map((tab) => (
+              <button key={tab.id} onClick={() => setVista(tab.id)} style={{ background: vista === tab.id ? COLORES.acento : "transparent", color: vista === tab.id ? COLORES.fondo : COLORES.textoSecundario, padding: "10px 16px", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 14, transition: "all 0.2s" }}>{tab.label}</button>
+            ))}
+          </div>
+          {vista === "libreta" && <VistaLibreta data={{ cuentas, movimientos }} setMovimientos={setMovimientos} cuentaActiva={cuentaActiva} setCuentaActiva={setCuentaActiva} cuentas={cuentas} />}
+          {vista === "cruces" && <VistaCruces data={{ cuentas, obligaciones }} setData={setObligaciones} cuentas={cuentas} />}
+          {vista === "obligaciones" && <VistaObligaciones data={{ cuentas, obligaciones }} setData={setObligaciones} cuentas={cuentas} />}
+          {vista === "pendientes" && <VistaPendientes data={{ cuentas, movimientos, obligaciones, pendientes }} setData={setPendientes} cuentas={cuentas} />}
+        </div>
+      );
+    }
+
+    function VistaLibreta({ data, setMovimientos, cuentaActiva, setCuentaActiva, cuentas }) {
+      const fileInputRef = useRef(null);
+      const [modalEdicion, setModalEdicion] = useState(null);
+      const [edicionFecha, setEdicionFecha] = useState("");
+      const [edicionConcepto, setEdicionConcepto] = useState("");
+      const [edicionMonto, setEdicionMonto] = useState("");
+      const [edicionTipo, setEdicionTipo] = useState("recibi");
+      const [edicionMedio, setEdicionMedio] = useState("transferencia");
+      const [filtroMedio, setFiltroMedio] = useState("Todos");
+
+      const movimientosDeLibreta = data.movimientos.filter((m) => m.cuentaId === cuentaActiva);
+      const movimientosFiltrados = filtroMedio === "Todos" ? movimientosDeLibreta : movimientosDeLibreta.filter((m) => m.medio === filtroMedio.toLowerCase());
+      const totalRecibido = movimientosFiltrados.filter((m) => m.tipo === "recibi").reduce((s, m) => s + m.monto, 0);
+      const totalEntregado = movimientosFiltrados.filter((m) => m.tipo === "entregue").reduce((s, m) => s + m.monto, 0);
+      const saldoNeto = totalRecibido - totalEntregado;
+
+      const abrirEdicion = (mov) => {
+        setModalEdicion(mov.id);
+        setEdicionFecha(mov.fecha);
+        setEdicionConcepto(mov.concepto);
+        setEdicionMonto(String(mov.monto));
+        setEdicionTipo(mov.tipo);
+        setEdicionMedio(mov.medio);
+      };
+
+      const guardarEdicion = async () => {
+        if (!modalEdicion) return;
+        const monto = parseFloat(String(edicionMonto).replace(/[^0-9.]/g, ""));
+        if (!monto) return;
+        const movActualizado = { id: modalEdicion, cuentaId: cuentaActiva, fecha: edicionFecha, concepto: edicionConcepto, monto, tipo: edicionTipo, medio: edicionMedio, creado: Date.now() };
+        await supabase.from("movimientos").update(movActualizado).eq("id", modalEdicion);
+        setMovimientos((prev) => prev.map((m) => (m.id === modalEdicion ? movActualizado : m)));
+        setModalEdicion(null);
+      };
+
+      const importarCSV = (e) => {
+        const archivo = e.target.files?.[0];
+        if (!archivo) return;
+        const lector = new FileReader();
+        lector.onload = async (evt) => {
+          const csv = evt.target?.result;
+          if (typeof csv !== "string") return;
+          const lineas = csv.trim().split("\n");
+          if (lineas.length < 2) return;
+          const headers = lineas[0].split(",").map((h) => h.trim().toLowerCase());
+          const indicesFecha = headers.indexOf("fecha");
+          const indicesConcepto = headers.indexOf("concepto");
+          const indicesMonto = headers.indexOf("monto");
+          const indicesTipo = headers.indexOf("tipo");
+          const indicesMedio = headers.indexOf("medio");
+          if (indicesFecha < 0 || indicesMonto < 0 || indicesTipo < 0) return;
+          const nuevosMovimientos = [];
+          for (let i = 1; i < lineas.length; i++) {
+            const valores = lineas[i].split(",").map((v) => v.trim());
+            if (valores.length < 3) continue;
+            const fecha = valores[indicesFecha] || hoy();
+            const concepto = valores[indicesConcepto] || "Importado";
+            const monto = parseFloat(valores[indicesMonto]);
+            const tipo = valores[indicesTipo] === "entregue" ? "entregue" : "recibi";
+            const medio = valores[indicesMedio]?.toLowerCase() || "transferencia";
+            if (!monto || monto <= 0) continue;
+            nuevosMovimientos.push({ id: uid(), cuentaId: cuentaActiva, fecha, concepto, monto, tipo, medio, creado: Date.now() });
+          }
+          if (nuevosMovimientos.length > 0) {
+            await supabase.from("movimientos").insert(nuevosMovimientos);
+            setMovimientos((prev) => [...prev, ...nuevosMovimientos]);
+          }
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        };
+        lector.readAsText(archivo);
+      };
+
+      const cuentaSeleccionada = cuentas.find((c) => c.id === cuentaActiva);
+      return (
         <div>
-          <h1>Finanzas - App Test</h1>
-          <p>Cuentas: {cuentas.length}</p>
-          {cuentas.map(c => (
-            <div key={c.id}>
-              <h2>{c.nombre}</h2>
-              <p>{c.rol}</p>
+          <div style={{ display: "flex", gap: 12, marginBottom: 24, overflowX: "auto", paddingBottom: 8 }}>
+            {cuentas.map((c) => (
+              <button key={c.id} onClick={() => setCuentaActiva(c.id)} style={{ background: cuentaActiva === c.id ? COLORES.acento : COLORES.fondoCard, color: cuentaActiva === c.id ? COLORES.fondo : COLORES.texto, padding: "12px 16px", border: `1px solid ${cuentaActiva === c.id ? COLORES.acento : COLORES.borde}`, borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 14, whiteSpace: "nowrap", transition: "all 0.2s" }}>{c.nombre}</button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acentoVerde}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 12, color: COLORES.textoSecundario, marginBottom: 8 }}>Total recibido</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: COLORES.acentoVerde }}>{mxn(totalRecibido)}</div>
             </div>
-          ))}
+            <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acentoRojo}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 12, color: COLORES.textoSecundario, marginBottom: 8 }}>Total entregado</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: COLORES.acentoRojo }}>{mxn(totalEntregado)}</div>
+            </div>
+            <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acento}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 12, color: COLORES.textoSecundario, marginBottom: 8 }}>Saldo neto</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: saldoNeto >= 0 ? COLORES.acentoVerde : COLORES.acentoRojo }}>{mxn(saldoNeto)}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            {["Todos", "Transferencia", "Efectivo", "Deuda"].map((m) => (
+              <button key={m} onClick={() => setFiltroMedio(m)} style={{ background: filtroMedio === m ? COLORES.acento : COLORES.fondoCard, color: filtroMedio === m ? COLORES.fondo : COLORES.texto, padding: "8px 12px", border: `1px solid ${filtroMedio === m ? COLORES.acento : COLORES.borde}`, borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{m}</button>
+            ))}
+          </div>
+          <button onClick={() => fileInputRef.current?.click()} style={{ background: COLORES.accentoOrange, color: COLORES.fondo, padding: "10px 16px", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, marginBottom: 20 }}>📤 Importar CSV</button>
+          <input ref={fileInputRef} type="file" accept=".csv" onChange={importarCSV} style={{ display: "none" }} />
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr style={{ borderBottom: `1px solid ${COLORES.borde}`, background: COLORES.fondoHover }}><th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600, color: COLORES.textoSecundario }}>Fecha</th><th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600, color: COLORES.textoSecundario }}>Concepto</th><th style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600, color: COLORES.textoSecundario }}>Recibí</th><th style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600, color: COLORES.textoSecundario }}>Entregué</th><th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 600, color: COLORES.textoSecundario }}>Medio</th><th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 600, color: COLORES.textoSecundario }}>Acción</th></tr></thead>
+              <tbody>{movimientosFiltrados.map((mov) => (<tr key={mov.id} style={{ borderBottom: `1px solid ${COLORES.borde}` }}><td style={{ padding: "12px 16px", color: COLORES.textoSecundario }}>{mov.fecha}</td><td style={{ padding: "12px 16px" }}>{mov.concepto}</td><td style={{ padding: "12px 16px", textAlign: "right", color: COLORES.acentoVerde, fontWeight: 600 }}>{mov.tipo === "recibi" ? mxn(mov.monto) : ""}</td><td style={{ padding: "12px 16px", textAlign: "right", color: COLORES.acentoRojo, fontWeight: 600 }}>{mov.tipo === "entregue" ? mxn(mov.monto) : ""}</td><td style={{ padding: "12px 16px", textAlign: "center", fontSize: 12, color: COLORES.textoSecundario }}>{mov.medio}</td><td style={{ padding: "12px 16px", textAlign: "center" }}><button onClick={() => abrirEdicion(mov)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}>✏️</button></td></tr>))}</tbody>
+            </table>
+          </div>
+          {modalEdicion && (
+            <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+              <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 24, maxWidth: 500, width: "90%" }}>
+                <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Editar movimiento</h3>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Fecha</label><input type="date" value={edicionFecha} onChange={(e) => setEdicionFecha(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }} /></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input value={edicionConcepto} onChange={(e) => setEdicionConcepto(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }} /></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input type="number" value={edicionMonto} onChange={(e) => setEdicionMonto(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }} /></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Tipo</label><select value={edicionTipo} onChange={(e) => setEdicionTipo(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }}><option value="recibi">Recibí</option><option value="entregue">Entregué</option></select></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Medio</label><select value={edicionMedio} onChange={(e) => setEdicionMedio(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="deuda">Deuda</option><option value="nómina">Nómina</option></select></div>
+                <div style={{ display: "flex", gap: 12 }}><button onClick={guardarEdicion} style={{ flex: 1, background: COLORES.acento, color: COLORES.fondo, padding: "12px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600 }}>Guardar</button><button onClick={() => setModalEdicion(null)} style={{ flex: 1, background: COLORES.borde, color: COLORES.texto, padding: "12px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600 }}>Cancelar</button></div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function VistaCruces({ data, setData, cuentas }) {
+      const [de, setDe] = useState(cuentas?.[5]?.id);
+      const [a, setA] = useState(cuentas?.[0]?.id);
+      const [monto, setMonto] = useState("");
+      const [concepto, setConcepto] = useState("");
+      const agregarCruce = async () => {
+        const n = parseFloat(String(monto).replace(/[^0-9.]/g, ""));
+        if (!n || !de || !a || de === a) return;
+        const nuevoObligo = { id: uid(), de, a, monto: n, concepto: concepto.trim() || "Cruce", hecho: false };
+        await supabase.from("obligaciones").insert([nuevoObligo]);
+        setMonto("");
+        setConcepto("");
+      };
+      const inp = { background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, padding: "10px 12px", fontSize: 13, color: COLORES.texto, borderRadius: 6, outline: "none" };
+      return (
+        <div><h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Cruces</h2><p style={{ fontSize: 14, color: COLORES.textoSecundario, marginBottom: 24 }}>Dinero que se mueve entre cuentas</p>
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>De</label><select value={de} onChange={(e) => setDe(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>A</label><select value={a} onChange={(e) => setA(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input placeholder="0.00" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inp, width: 140 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input placeholder="Transferencia..." value={concepto} onChange={(e) => setConcepto(e.target.value)} style={{ ...inp, width: 200 }} /></div>
+              <button onClick={agregarCruce} style={{ background: COLORES.acento, color: COLORES.fondo, padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontWeight: 600, border: "none", alignSelf: "flex-end" }}>Registrar</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function VistaObligaciones({ data, setData, cuentas }) {
+      const [de, setDe] = useState(cuentas?.[5]?.id);
+      const [a, setA] = useState(cuentas?.[0]?.id);
+      const [monto, setMonto] = useState("");
+      const [concepto, setConcepto] = useState("");
+      const agregarCruce = async () => {
+        const n = parseFloat(String(monto).replace(/[^0-9.]/g, ""));
+        if (!n || !de || !a || de === a) return;
+        const nuevoObligo = { id: uid(), de, a, monto: n, concepto: concepto.trim() || "Cruce", hecho: false };
+        await supabase.from("obligaciones").insert([nuevoObligo]);
+        setMonto("");
+        setConcepto("");
+      };
+      const inp = { background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, padding: "10px 12px", fontSize: 13, color: COLORES.texto, borderRadius: 6, outline: "none" };
+      return (
+        <div><h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Obligaciones</h2><p style={{ fontSize: 14, color: COLORES.textoSecundario, marginBottom: 24 }}>Deudas a pagar</p>
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>De</label><select value={de} onChange={(e) => setDe(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>A</label><select value={a} onChange={(e) => setA(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input placeholder="0.00" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inp, width: 140 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input placeholder="Transferencia..." value={concepto} onChange={(e) => setConcepto(e.target.value)} style={{ ...inp, width: 200 }} /></div>
+              <button onClick={agregarCruce} style={{ background: COLORES.acento, color: COLORES.fondo, padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontWeight: 600, border: "none", alignSelf: "flex-end" }}>Registrar</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function VistaPendientes({ data, setData, cuentas }) {
+      const [de, setDe] = useState(cuentas?.[5]?.id);
+      const [a, setA] = useState(cuentas?.[0]?.id);
+      const [monto, setMonto] = useState("");
+      const [concepto, setConcepto] = useState("");
+      const agregarPendiente = async () => {
+        const n = parseFloat(String(monto).replace(/[^0-9.]/g, ""));
+        if (!n || !de || !a || de === a) return;
+        const nuevoPendiente = { id: uid(), de, a, monto: n, concepto: concepto.trim() || "Pendiente", hecho: false };
+        await supabase.from("pendientes").insert([nuevoPendiente]);
+        setMonto("");
+        setConcepto("");
+      };
+      const marcarHecho = async (id, actual) => {
+        await supabase.from("pendientes").update({ hecho: !actual }).eq("id", id);
+      };
+      const borrarPendiente = async (id) => {
+        await supabase.from("pendientes").delete().eq("id", id);
+      };
+      const pendientesActivos = (data?.pendientes || []).filter((p) => !p.hecho);
+      const pendientesHechos = (data?.pendientes || []).filter((p) => p.hecho);
+      const totalPendiente = pendientesActivos.reduce((s, p) => s + p.monto, 0);
+      const inp = { background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, padding: "10px 12px", fontSize: 13, color: COLORES.texto, borderRadius: 6, outline: "none" };
+      return (
+        <div><h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Pendientes de liquidar</h2><p style={{ fontSize: 14, color: COLORES.textoSecundario, marginBottom: 24 }}>Lleva control de lo que tienes que transferir</p>
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>De</label><select value={de} onChange={(e) => setDe(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>A</label><select value={a} onChange={(e) => setA(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input placeholder="0.00" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inp, width: 140 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input placeholder="Transferencia, pago..." value={concepto} onChange={(e) => setConcepto(e.target.value)} style={{ ...inp, width: 200 }} /></div>
+              <button onClick={agregarPendiente} style={{ background: COLORES.acento, color: COLORES.fondo, padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontWeight: 600, border: "none", alignSelf: "flex-end" }}>Agregar</button>
+            </div>
+          </div>
+          {pendientesActivos.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: COLORES.acentoRojo }}>Pendientes ({pendientesActivos.length}) — {mxn(totalPendiente)}</h3>
+              <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acentoRojo}`, borderRadius: 12, overflow: "hidden" }}>
+                {pendientesActivos.map((p) => {
+                  const deNombre = cuentas?.find((c) => c.id === p.de)?.nombre;
+                  const aNombre = cuentas?.find((c) => c.id === p.a)?.nombre;
+                  return (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `1px solid ${COLORES.borde}` }}>
+                      <input type="checkbox" checked={false} onChange={() => marcarHecho(p.id, false)} style={{ cursor: "pointer", width: 18, height: 18 }} />
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600 }}>{deNombre} → {aNombre}</div><div style={{ fontSize: 12, color: COLORES.textoSecundario }}>{p.concepto}</div></div>
+                      <span style={{ fontSize: 16, color: COLORES.acentoRojo, fontWeight: 700, minWidth: 120, textAlign: "right" }}>{mxn(p.monto)}</span>
+                      <button onClick={() => borrarPendiente(p.id)} style={{ background: "none", border: "none", color: COLORES.borde, cursor: "pointer" }}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {pendientesHechos.length > 0 && (
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: COLORES.acentoVerde }}>Completados ({pendientesHechos.length})</h3>
+              <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, overflow: "hidden", opacity: 0.6 }}>
+                {pendientesHechos.map((p) => {
+                  const deNombre = cuentas?.find((c) => c.id === p.de)?.nombre;
+                  const aNombre = cuentas?.find((c) => c.id === p.a)?.nombre;
+                  return (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `1px solid ${COLORES.borde}`, textDecoration: "line-through" }}>
+                      <input type="checkbox" checked={true} onChange={() => marcarHecho(p.id, true)} style={{ cursor: "pointer", width: 18, height: 18 }} />
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 14 }}>{deNombre} → {aNombre}</div><div style={{ fontSize: 12, color: COLORES.textoSecundario }}>{p.concepto}</div></div>
+                      <span style={{ fontSize: 14, minWidth: 120, textAlign: "right" }}>{mxn(p.monto)}</span>
+                      <button onClick={() => borrarPendiente(p.id)} style={{ background: "none", border: "none", color: COLORES.borde, cursor: "pointer" }}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       );
     }
 
     const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<App />);
+    root.render(<FinanzasApp />);
+  </script>
+</body>
+</html>
+EOFcat > index.html << 'EOF'
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Finanzas — Control de operación</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #0A0E27; color: #FFFFFF; }
+    input, select, button { font-family: inherit; }
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+    const SUPABASE_URL = "https://oqwbyvjgyvlmofxbgvar.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_lnovL7ZW22et_KNVw2Gj3Q_QESsrYvs";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const KEY = "finanzas-app:v5";
+    const COLORES = { fondo: "#0A0E27", fondoCard: "#111B3C", fondoHover: "#1A2847", texto: "#FFFFFF", textoSecundario: "#A0AEC0", acento: "#00D9FF", acentoVerde: "#10B981", acentoRojo: "#EF4444", accentoOrange: "#F97316", borde: "#1E3A5F" };
+    function cargar() { try { const data = localStorage.getItem(KEY); if (data) return JSON.parse(data); } catch (e) {} return null; }
+    function guardar(data) { try { localStorage.setItem(KEY, JSON.stringify(data)); return true; } catch (e) { return false; } }
+    const SEMILLA = { cuentas: [ { id: "c1", nombre: "Hermano", rol: "Edgar · Nómina", nota: "" }, { id: "c2", nombre: "Lalo", rol: "Primo · Cliente", nota: "" }, { id: "c3", nombre: "Papá", rol: "Familia", nota: "" }, { id: "c4", nombre: "JMGC", rol: "Razón social", nota: "" }, { id: "c5", nombre: "Cemcoyaa", rol: "Razón social", nota: "" }, { id: "c6", nombre: "Itzayana", rol: "Razón social", nota: "" } ], movimientos: [ { id: "m1", cuentaId: "c1", fecha: "2026-07-13", concepto: "Nómina", monto: 47470.64, tipo: "recibi", medio: "nómina", creado: 1725811200000 }, { id: "m2", cuentaId: "c1", fecha: "2026-07-28", concepto: "Nómina", monto: 40995.15, tipo: "recibi", medio: "nómina", creado: 1725897600000 }, { id: "m3", cuentaId: "c1", fecha: "2026-08-13", concepto: "Nómina", monto: 44232.89, tipo: "recibi", medio: "nómina", creado: 1726161600000 }, { id: "m4", cuentaId: "c1", fecha: "2026-08-28", concepto: "Nómina", monto: 44232.9, tipo: "recibi", medio: "nómina", creado: 1726248000000 }, { id: "m5", cuentaId: "c1", fecha: "2026-09-08", concepto: "Entregas julio-agosto: efectivo, transferencias, descuentos de deuda", monto: 181000, tipo: "entregue", medio: "acumulado", creado: 1725811200000 } ], obligaciones: [], pendientes: [] };
+    const mxn = (n) => (n < 0 ? "-" : "") + "$" + Math.abs(n).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const hoy = () => new Date().toISOString().slice(0, 10);
+    const uid = () => Math.random().toString(36).slice(2, 10);
+    const efecto = (mov) => (mov.tipo === "recibi" ? -mov.monto : mov.monto);
+    const fechaCorta = (f) => { const [a, m, d] = f.split("-"); return `${d}/${m}`; };
+    
+    function FinanzasApp() {
+      const [data, setData] = useState(() => { const local = cargar(); return local || SEMILLA; });
+      const [cuentas, setCuentas] = useState(data.cuentas);
+      const [movimientos, setMovimientos] = useState(data.movimientos);
+      const [obligaciones, setObligaciones] = useState(data.obligaciones);
+      const [pendientes, setPendientes] = useState(data.pendientes);
+      const [vista, setVista] = useState("libreta");
+      const [cuentaActiva, setCuentaActiva] = useState(data.cuentas?.[0]?.id);
+
+      useEffect(() => {
+        const newData = { cuentas, movimientos, obligaciones, pendientes };
+        setData(newData);
+        guardar(newData);
+        const canal = supabase.channel("db-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "movimientos" }, (payload) => {
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              setMovimientos((prev) => { const existe = prev.find((m) => m.id === payload.new.id); if (existe) return prev.map((m) => (m.id === payload.new.id ? payload.new : m)); return [...prev, payload.new]; });
+            } else if (payload.eventType === "DELETE") {
+              setMovimientos((prev) => prev.filter((m) => m.id !== payload.old.id));
+            }
+          })
+          .on("postgres_changes", { event: "*", schema: "public", table: "cuentas" }, (payload) => {
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              setCuentas((prev) => { const existe = prev.find((c) => c.id === payload.new.id); if (existe) return prev.map((c) => (c.id === payload.new.id ? payload.new : c)); return [...prev, payload.new]; });
+            }
+          })
+          .on("postgres_changes", { event: "*", schema: "public", table: "pendientes" }, (payload) => {
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              setPendientes((prev) => { const existe = prev.find((p) => p.id === payload.new.id); if (existe) return prev.map((p) => (p.id === payload.new.id ? payload.new : p)); return [...prev, payload.new]; });
+            } else if (payload.eventType === "DELETE") {
+              setPendientes((prev) => prev.filter((p) => p.id !== payload.old.id));
+            }
+          })
+          .subscribe();
+        return () => { canal.unsubscribe(); };
+      }, [cuentas, movimientos, obligaciones, pendientes]);
+
+      return (
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30 }}>
+            <div><h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 4 }}>Finanzas</h1><p style={{ fontSize: 14, color: COLORES.textoSecundario }}>Control de operación — JMGC</p></div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: `1px solid ${COLORES.borde}`, paddingBottom: 16 }}>
+            {[{ id: "libreta", label: "📖 Libretas" }, { id: "cruces", label: "🔀 Cruces" }, { id: "obligaciones", label: "📋 Obligaciones" }, { id: "pendientes", label: "✓ Pendientes" }].map((tab) => (
+              <button key={tab.id} onClick={() => setVista(tab.id)} style={{ background: vista === tab.id ? COLORES.acento : "transparent", color: vista === tab.id ? COLORES.fondo : COLORES.textoSecundario, padding: "10px 16px", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 14, transition: "all 0.2s" }}>{tab.label}</button>
+            ))}
+          </div>
+          {vista === "libreta" && <VistaLibreta data={{ cuentas, movimientos }} setMovimientos={setMovimientos} cuentaActiva={cuentaActiva} setCuentaActiva={setCuentaActiva} cuentas={cuentas} />}
+          {vista === "cruces" && <VistaCruces data={{ cuentas, obligaciones }} setData={setObligaciones} cuentas={cuentas} />}
+          {vista === "obligaciones" && <VistaObligaciones data={{ cuentas, obligaciones }} setData={setObligaciones} cuentas={cuentas} />}
+          {vista === "pendientes" && <VistaPendientes data={{ cuentas, movimientos, obligaciones, pendientes }} setData={setPendientes} cuentas={cuentas} />}
+        </div>
+      );
+    }
+
+    function VistaLibreta({ data, setMovimientos, cuentaActiva, setCuentaActiva, cuentas }) {
+      const fileInputRef = useRef(null);
+      const [modalEdicion, setModalEdicion] = useState(null);
+      const [edicionFecha, setEdicionFecha] = useState("");
+      const [edicionConcepto, setEdicionConcepto] = useState("");
+      const [edicionMonto, setEdicionMonto] = useState("");
+      const [edicionTipo, setEdicionTipo] = useState("recibi");
+      const [edicionMedio, setEdicionMedio] = useState("transferencia");
+      const [filtroMedio, setFiltroMedio] = useState("Todos");
+
+      const movimientosDeLibreta = data.movimientos.filter((m) => m.cuentaId === cuentaActiva);
+      const movimientosFiltrados = filtroMedio === "Todos" ? movimientosDeLibreta : movimientosDeLibreta.filter((m) => m.medio === filtroMedio.toLowerCase());
+      const totalRecibido = movimientosFiltrados.filter((m) => m.tipo === "recibi").reduce((s, m) => s + m.monto, 0);
+      const totalEntregado = movimientosFiltrados.filter((m) => m.tipo === "entregue").reduce((s, m) => s + m.monto, 0);
+      const saldoNeto = totalRecibido - totalEntregado;
+
+      const abrirEdicion = (mov) => {
+        setModalEdicion(mov.id);
+        setEdicionFecha(mov.fecha);
+        setEdicionConcepto(mov.concepto);
+        setEdicionMonto(String(mov.monto));
+        setEdicionTipo(mov.tipo);
+        setEdicionMedio(mov.medio);
+      };
+
+      const guardarEdicion = async () => {
+        if (!modalEdicion) return;
+        const monto = parseFloat(String(edicionMonto).replace(/[^0-9.]/g, ""));
+        if (!monto) return;
+        const movActualizado = { id: modalEdicion, cuentaId: cuentaActiva, fecha: edicionFecha, concepto: edicionConcepto, monto, tipo: edicionTipo, medio: edicionMedio, creado: Date.now() };
+        await supabase.from("movimientos").update(movActualizado).eq("id", modalEdicion);
+        setMovimientos((prev) => prev.map((m) => (m.id === modalEdicion ? movActualizado : m)));
+        setModalEdicion(null);
+      };
+
+      const importarCSV = (e) => {
+        const archivo = e.target.files?.[0];
+        if (!archivo) return;
+        const lector = new FileReader();
+        lector.onload = async (evt) => {
+          const csv = evt.target?.result;
+          if (typeof csv !== "string") return;
+          const lineas = csv.trim().split("\n");
+          if (lineas.length < 2) return;
+          const headers = lineas[0].split(",").map((h) => h.trim().toLowerCase());
+          const indicesFecha = headers.indexOf("fecha");
+          const indicesConcepto = headers.indexOf("concepto");
+          const indicesMonto = headers.indexOf("monto");
+          const indicesTipo = headers.indexOf("tipo");
+          const indicesMedio = headers.indexOf("medio");
+          if (indicesFecha < 0 || indicesMonto < 0 || indicesTipo < 0) return;
+          const nuevosMovimientos = [];
+          for (let i = 1; i < lineas.length; i++) {
+            const valores = lineas[i].split(",").map((v) => v.trim());
+            if (valores.length < 3) continue;
+            const fecha = valores[indicesFecha] || hoy();
+            const concepto = valores[indicesConcepto] || "Importado";
+            const monto = parseFloat(valores[indicesMonto]);
+            const tipo = valores[indicesTipo] === "entregue" ? "entregue" : "recibi";
+            const medio = valores[indicesMedio]?.toLowerCase() || "transferencia";
+            if (!monto || monto <= 0) continue;
+            nuevosMovimientos.push({ id: uid(), cuentaId: cuentaActiva, fecha, concepto, monto, tipo, medio, creado: Date.now() });
+          }
+          if (nuevosMovimientos.length > 0) {
+            await supabase.from("movimientos").insert(nuevosMovimientos);
+            setMovimientos((prev) => [...prev, ...nuevosMovimientos]);
+          }
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        };
+        lector.readAsText(archivo);
+      };
+
+      const cuentaSeleccionada = cuentas.find((c) => c.id === cuentaActiva);
+      return (
+        <div>
+          <div style={{ display: "flex", gap: 12, marginBottom: 24, overflowX: "auto", paddingBottom: 8 }}>
+            {cuentas.map((c) => (
+              <button key={c.id} onClick={() => setCuentaActiva(c.id)} style={{ background: cuentaActiva === c.id ? COLORES.acento : COLORES.fondoCard, color: cuentaActiva === c.id ? COLORES.fondo : COLORES.texto, padding: "12px 16px", border: `1px solid ${cuentaActiva === c.id ? COLORES.acento : COLORES.borde}`, borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 14, whiteSpace: "nowrap", transition: "all 0.2s" }}>{c.nombre}</button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acentoVerde}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 12, color: COLORES.textoSecundario, marginBottom: 8 }}>Total recibido</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: COLORES.acentoVerde }}>{mxn(totalRecibido)}</div>
+            </div>
+            <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acentoRojo}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 12, color: COLORES.textoSecundario, marginBottom: 8 }}>Total entregado</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: COLORES.acentoRojo }}>{mxn(totalEntregado)}</div>
+            </div>
+            <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acento}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 12, color: COLORES.textoSecundario, marginBottom: 8 }}>Saldo neto</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: saldoNeto >= 0 ? COLORES.acentoVerde : COLORES.acentoRojo }}>{mxn(saldoNeto)}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            {["Todos", "Transferencia", "Efectivo", "Deuda"].map((m) => (
+              <button key={m} onClick={() => setFiltroMedio(m)} style={{ background: filtroMedio === m ? COLORES.acento : COLORES.fondoCard, color: filtroMedio === m ? COLORES.fondo : COLORES.texto, padding: "8px 12px", border: `1px solid ${filtroMedio === m ? COLORES.acento : COLORES.borde}`, borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{m}</button>
+            ))}
+          </div>
+          <button onClick={() => fileInputRef.current?.click()} style={{ background: COLORES.accentoOrange, color: COLORES.fondo, padding: "10px 16px", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, marginBottom: 20 }}>📤 Importar CSV</button>
+          <input ref={fileInputRef} type="file" accept=".csv" onChange={importarCSV} style={{ display: "none" }} />
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr style={{ borderBottom: `1px solid ${COLORES.borde}`, background: COLORES.fondoHover }}><th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600, color: COLORES.textoSecundario }}>Fecha</th><th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600, color: COLORES.textoSecundario }}>Concepto</th><th style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600, color: COLORES.textoSecundario }}>Recibí</th><th style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600, color: COLORES.textoSecundario }}>Entregué</th><th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 600, color: COLORES.textoSecundario }}>Medio</th><th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 600, color: COLORES.textoSecundario }}>Acción</th></tr></thead>
+              <tbody>{movimientosFiltrados.map((mov) => (<tr key={mov.id} style={{ borderBottom: `1px solid ${COLORES.borde}` }}><td style={{ padding: "12px 16px", color: COLORES.textoSecundario }}>{mov.fecha}</td><td style={{ padding: "12px 16px" }}>{mov.concepto}</td><td style={{ padding: "12px 16px", textAlign: "right", color: COLORES.acentoVerde, fontWeight: 600 }}>{mov.tipo === "recibi" ? mxn(mov.monto) : ""}</td><td style={{ padding: "12px 16px", textAlign: "right", color: COLORES.acentoRojo, fontWeight: 600 }}>{mov.tipo === "entregue" ? mxn(mov.monto) : ""}</td><td style={{ padding: "12px 16px", textAlign: "center", fontSize: 12, color: COLORES.textoSecundario }}>{mov.medio}</td><td style={{ padding: "12px 16px", textAlign: "center" }}><button onClick={() => abrirEdicion(mov)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}>✏️</button></td></tr>))}</tbody>
+            </table>
+          </div>
+          {modalEdicion && (
+            <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+              <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 24, maxWidth: 500, width: "90%" }}>
+                <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Editar movimiento</h3>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Fecha</label><input type="date" value={edicionFecha} onChange={(e) => setEdicionFecha(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }} /></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input value={edicionConcepto} onChange={(e) => setEdicionConcepto(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }} /></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input type="number" value={edicionMonto} onChange={(e) => setEdicionMonto(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }} /></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Tipo</label><select value={edicionTipo} onChange={(e) => setEdicionTipo(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }}><option value="recibi">Recibí</option><option value="entregue">Entregué</option></select></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Medio</label><select value={edicionMedio} onChange={(e) => setEdicionMedio(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="deuda">Deuda</option><option value="nómina">Nómina</option></select></div>
+                <div style={{ display: "flex", gap: 12 }}><button onClick={guardarEdicion} style={{ flex: 1, background: COLORES.acento, color: COLORES.fondo, padding: "12px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600 }}>Guardar</button><button onClick={() => setModalEdicion(null)} style={{ flex: 1, background: COLORES.borde, color: COLORES.texto, padding: "12px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600 }}>Cancelar</button></div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function VistaCruces({ data, setData, cuentas }) {
+      const [de, setDe] = useState(cuentas?.[5]?.id);
+      const [a, setA] = useState(cuentas?.[0]?.id);
+      const [monto, setMonto] = useState("");
+      const [concepto, setConcepto] = useState("");
+      const agregarCruce = async () => {
+        const n = parseFloat(String(monto).replace(/[^0-9.]/g, ""));
+        if (!n || !de || !a || de === a) return;
+        const nuevoObligo = { id: uid(), de, a, monto: n, concepto: concepto.trim() || "Cruce", hecho: false };
+        await supabase.from("obligaciones").insert([nuevoObligo]);
+        setMonto("");
+        setConcepto("");
+      };
+      const inp = { background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, padding: "10px 12px", fontSize: 13, color: COLORES.texto, borderRadius: 6, outline: "none" };
+      return (
+        <div><h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Cruces</h2><p style={{ fontSize: 14, color: COLORES.textoSecundario, marginBottom: 24 }}>Dinero que se mueve entre cuentas</p>
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>De</label><select value={de} onChange={(e) => setDe(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>A</label><select value={a} onChange={(e) => setA(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input placeholder="0.00" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inp, width: 140 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input placeholder="Transferencia..." value={concepto} onChange={(e) => setConcepto(e.target.value)} style={{ ...inp, width: 200 }} /></div>
+              <button onClick={agregarCruce} style={{ background: COLORES.acento, color: COLORES.fondo, padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontWeight: 600, border: "none", alignSelf: "flex-end" }}>Registrar</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function VistaObligaciones({ data, setData, cuentas }) {
+      const [de, setDe] = useState(cuentas?.[5]?.id);
+      const [a, setA] = useState(cuentas?.[0]?.id);
+      const [monto, setMonto] = useState("");
+      const [concepto, setConcepto] = useState("");
+      const agregarCruce = async () => {
+        const n = parseFloat(String(monto).replace(/[^0-9.]/g, ""));
+        if (!n || !de || !a || de === a) return;
+        const nuevoObligo = { id: uid(), de, a, monto: n, concepto: concepto.trim() || "Cruce", hecho: false };
+        await supabase.from("obligaciones").insert([nuevoObligo]);
+        setMonto("");
+        setConcepto("");
+      };
+      const inp = { background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, padding: "10px 12px", fontSize: 13, color: COLORES.texto, borderRadius: 6, outline: "none" };
+      return (
+        <div><h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Obligaciones</h2><p style={{ fontSize: 14, color: COLORES.textoSecundario, marginBottom: 24 }}>Deudas a pagar</p>
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>De</label><select value={de} onChange={(e) => setDe(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>A</label><select value={a} onChange={(e) => setA(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input placeholder="0.00" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inp, width: 140 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input placeholder="Transferencia..." value={concepto} onChange={(e) => setConcepto(e.target.value)} style={{ ...inp, width: 200 }} /></div>
+              <button onClick={agregarCruce} style={{ background: COLORES.acento, color: COLORES.fondo, padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontWeight: 600, border: "none", alignSelf: "flex-end" }}>Registrar</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function VistaPendientes({ data, setData, cuentas }) {
+      const [de, setDe] = useState(cuentas?.[5]?.id);
+      const [a, setA] = useState(cuentas?.[0]?.id);
+      const [monto, setMonto] = useState("");
+      const [concepto, setConcepto] = useState("");
+      const agregarPendiente = async () => {
+        const n = parseFloat(String(monto).replace(/[^0-9.]/g, ""));
+        if (!n || !de || !a || de === a) return;
+        const nuevoPendiente = { id: uid(), de, a, monto: n, concepto: concepto.trim() || "Pendiente", hecho: false };
+        await supabase.from("pendientes").insert([nuevoPendiente]);
+        setMonto("");
+        setConcepto("");
+      };
+      const marcarHecho = async (id, actual) => {
+        await supabase.from("pendientes").update({ hecho: !actual }).eq("id", id);
+      };
+      const borrarPendiente = async (id) => {
+        await supabase.from("pendientes").delete().eq("id", id);
+      };
+      const pendientesActivos = (data?.pendientes || []).filter((p) => !p.hecho);
+      const pendientesHechos = (data?.pendientes || []).filter((p) => p.hecho);
+      const totalPendiente = pendientesActivos.reduce((s, p) => s + p.monto, 0);
+      const inp = { background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, padding: "10px 12px", fontSize: 13, color: COLORES.texto, borderRadius: 6, outline: "none" };
+      return (
+        <div><h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Pendientes de liquidar</h2><p style={{ fontSize: 14, color: COLORES.textoSecundario, marginBottom: 24 }}>Lleva control de lo que tienes que transferir</p>
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>De</label><select value={de} onChange={(e) => setDe(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>A</label><select value={a} onChange={(e) => setA(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input placeholder="0.00" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inp, width: 140 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input placeholder="Transferencia, pago..." value={concepto} onChange={(e) => setConcepto(e.target.value)} style={{ ...inp, width: 200 }} /></div>
+              <button onClick={agregarPendiente} style={{ background: COLORES.acento, color: COLORES.fondo, padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontWeight: 600, border: "none", alignSelf: "flex-end" }}>Agregar</button>
+            </div>
+          </div>
+          {pendientesActivos.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: COLORES.acentoRojo }}>Pendientes ({pendientesActivos.length}) — {mxn(totalPendiente)}</h3>
+              <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acentoRojo}`, borderRadius: 12, overflow: "hidden" }}>
+                {pendientesActivos.map((p) => {
+                  const deNombre = cuentas?.find((c) => c.id === p.de)?.nombre;
+                  const aNombre = cuentas?.find((c) => c.id === p.a)?.nombre;
+                  return (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `1px solid ${COLORES.borde}` }}>
+                      <input type="checkbox" checked={false} onChange={() => marcarHecho(p.id, false)} style={{ cursor: "pointer", width: 18, height: 18 }} />
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600 }}>{deNombre} → {aNombre}</div><div style={{ fontSize: 12, color: COLORES.textoSecundario }}>{p.concepto}</div></div>
+                      <span style={{ fontSize: 16, color: COLORES.acentoRojo, fontWeight: 700, minWidth: 120, textAlign: "right" }}>{mxn(p.monto)}</span>
+                      <button onClick={() => borrarPendiente(p.id)} style={{ background: "none", border: "none", color: COLORES.borde, cursor: "pointer" }}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {pendientesHechos.length > 0 && (
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: COLORES.acentoVerde }}>Completados ({pendientesHechos.length})</h3>
+              <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, overflow: "hidden", opacity: 0.6 }}>
+                {pendientesHechos.map((p) => {
+                  const deNombre = cuentas?.find((c) => c.id === p.de)?.nombre;
+                  const aNombre = cuentas?.find((c) => c.id === p.a)?.nombre;
+                  return (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `1px solid ${COLORES.borde}`, textDecoration: "line-through" }}>
+                      <input type="checkbox" checked={true} onChange={() => marcarHecho(p.id, true)} style={{ cursor: "pointer", width: 18, height: 18 }} />
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 14 }}>{deNombre} → {aNombre}</div><div style={{ fontSize: 12, color: COLORES.textoSecundario }}>{p.concepto}</div></div>
+                      <span style={{ fontSize: 14, minWidth: 120, textAlign: "right" }}>{mxn(p.monto)}</span>
+                      <button onClick={() => borrarPendiente(p.id)} style={{ background: "none", border: "none", color: COLORES.borde, cursor: "pointer" }}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<FinanzasApp />);
   </script>
 </body>
 </html>
