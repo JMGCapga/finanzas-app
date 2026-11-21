@@ -58,6 +58,8 @@ const fmt = (n) =>
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
+const normMat = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
 const fmtS = (n) => (n < 0 ? "−" : "") + fmt(Math.abs(n));
 
 const fechaMX = (f) => (f ? String(f).split("-").reverse().join("/") : "");
@@ -210,6 +212,8 @@ function FinanzasCruzadas() {
     cant: "",
     unidad: "ton",
     pu: "",
+    puAuto: "",
+    material: "",
     tipo: "gasto",
     cuentaPago: "c1",
     corresponde: "personal",
@@ -323,7 +327,7 @@ function FinanzasCruzadas() {
       esTexto(x.id) && esFecha(x.fecha) && esMonto(x.monto) && esTexto(x.desc) &&
       ["gasto", "ingreso", "transferencia"].indexOf(x.tipo) >= 0 &&
       idsEnt.has(x.pagador) && idsEnt.has(x.corresponde) && idsCta.has(x.cuenta)
-        ? { id: x.id, fecha: x.fecha, desc: x.desc, monto: x.monto, cant: numONull(x.cant), unidad: typeof x.unidad === "string" ? x.unidad : "ton", pu: numONull(x.pu), tipo: x.tipo, pagador: x.pagador, cuenta: x.cuenta, corresponde: x.corresponde }
+        ? { id: x.id, fecha: x.fecha, desc: x.desc, monto: x.monto, cant: numONull(x.cant), unidad: typeof x.unidad === "string" ? x.unidad : "ton", pu: numONull(x.pu), material: typeof x.material === "string" && x.material.trim() ? x.material.trim() : null, tipo: x.tipo, pagador: x.pagador, cuenta: x.cuenta, corresponde: x.corresponde }
         : null);
     const rPen = unir(pendientes, d.pendientes, (x) =>
       esTexto(x.id) && esTexto(x.desc) && esMonto(x.monto) && esFecha(x.fecha) && idsEnt.has(x.entidad)
@@ -366,19 +370,51 @@ function FinanzasCruzadas() {
   const cuentaDe = (id) => cuentas.find((c) => c.id === id);
   const entDe = (id) => entidades.find((e) => e.id === id);
 
+  // Último precio (por fecha) al que se le registró ese material a esa persona
+  const ultimoPrecio = (persona, material) => {
+    const k = normMat(material);
+    if (!k) return null;
+    let mejor = null;
+    movs.forEach((m) => {
+      if (m.corresponde !== persona || m.tipo !== "gasto" || !m.pu || normMat(m.material) !== k) return;
+      if (!mejor || m.fecha > mejor.fecha) mejor = m;
+    });
+    return mejor ? { pu: mejor.pu, unidad: mejor.unidad, fecha: mejor.fecha } : null;
+  };
+
+  // Al cambiar persona o material trae el último precio, salvo que el usuario ya haya escrito uno distinto
+  const cambiarForm = (parche) => {
+    const nf = { ...f, ...parche };
+    if ("corresponde" in parche || "material" in parche) {
+      const sinTocar = f.pu === "" || String(f.pu) === String(f.puAuto);
+      if (sinTocar) {
+        const ult = ultimoPrecio(nf.corresponde, nf.material);
+        nf.pu = ult ? String(ult.pu) : "";
+        nf.puAuto = nf.pu;
+        if (ult && ult.unidad) nf.unidad = ult.unidad;
+      }
+    }
+    setF(nf);
+  };
+
   const agregar = () => {
-    const montoCalc = f.cant && f.pu ? Number(f.cant) * Number(f.pu) : Number(f.monto);
-    if (!montoCalc || montoCalc <= 0 || !f.desc.trim()) return;
+    const esGasto = f.tipo === "gasto";
+    const conPrecio = Boolean(esGasto && f.cant && f.pu);
+    const montoCalc = conPrecio ? Math.round(Number(f.cant) * Number(f.pu) * 100) / 100 : Number(f.monto);
+    const material = esGasto ? f.material.trim() : "";
+    const descBase = f.desc.trim() || (material ? "Entrega de material – " + material : "");
+    if (!montoCalc || montoCalc <= 0 || !descBase) return;
     const cta = cuentaDe(f.cuentaPago);
-    const detalle = f.cant && f.pu ? " (" + f.cant + " " + f.unidad + " × " + fmt(f.pu) + ")" : "";
+    const detalle = conPrecio ? " (" + f.cant + " " + f.unidad + " × " + fmt(f.pu) + ")" : "";
     const m = {
       id: Date.now().toString(),
       fecha: f.fecha,
-      desc: f.desc.trim() + detalle,
+      desc: descBase + detalle,
       monto: montoCalc,
-      cant: f.cant ? Number(f.cant) : null,
+      cant: esGasto && f.cant ? Number(f.cant) : null,
       unidad: f.unidad,
-      pu: f.pu ? Number(f.pu) : null,
+      pu: esGasto && f.pu ? Number(f.pu) : null,
+      material: material || null,
       tipo: f.tipo,
       pagador: cta.entidad,
       cuenta: cta.id,
@@ -387,7 +423,7 @@ function FinanzasCruzadas() {
     const nuevos = [m, ...movs];
     setMovs(nuevos);
     persistir({ movs: nuevos });
-    setF({ ...f, desc: "", monto: "" });
+    setF({ ...f, desc: "", monto: "", cant: "", puAuto: f.pu });
   };
 
   const borrar = (id) => {
@@ -574,6 +610,34 @@ function FinanzasCruzadas() {
   const est = selEnt ? estadoDe(selEnt.id) : null;
   const multi = est ? new Set(est.filas.map((f) => f.otro)).size > 1 : false;
 
+  const materialesUsados = (() => {
+    const vistos = {};
+    movs.forEach((m) => {
+      const k = normMat(m.material);
+      if (k && !vistos[k]) vistos[k] = m.material;
+    });
+    return Object.values(vistos).sort((a, b) => a.localeCompare(b, "es"));
+  })();
+  const ultPrecio = f.tipo === "gasto" ? ultimoPrecio(f.corresponde, f.material) : null;
+  const difPrecio = ultPrecio && Number(f.pu) > 0 ? Math.round((Number(f.pu) - ultPrecio.pu) * 100) / 100 : 0;
+
+  // Historial de precios por material para una persona: solo cuando el precio cambió
+  const preciosDe = (xid) => {
+    const lista = movs.slice().reverse().filter((m) => m.corresponde === xid && m.tipo === "gasto" && m.pu && normMat(m.material));
+    lista.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+    const grupos = {};
+    lista.forEach((m) => {
+      const k = normMat(m.material);
+      const g = grupos[k] || (grupos[k] = { nombre: m.material, unidad: m.unidad, cambios: [] });
+      g.nombre = m.material;
+      g.unidad = m.unidad;
+      const ult = g.cambios[g.cambios.length - 1];
+      if (!ult || Math.abs(ult.pu - m.pu) > 0.004) g.cambios.push({ fecha: m.fecha, pu: m.pu });
+    });
+    return Object.values(grupos).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  };
+  const precios = selEnt ? preciosDe(selEnt.id) : [];
+
   const bajarEstadoPNG = () => {
     const canvas = dibujarEstado(selEnt.nombre, categoriaDe(selEnt), est.filas, est.saldo, multi, nombreDe);
     canvas.toBlob((blob) => {
@@ -747,35 +811,66 @@ function FinanzasCruzadas() {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                  <div>
-                    <label style={st.label}>Cantidad</label>
-                    <input type="number" inputMode="decimal" placeholder="opcional" value={f.cant} onChange={(e) => setF({ ...f, cant: e.target.value })} style={st.input} className="mono" />
-                  </div>
-                  <div>
-                    <label style={st.label}>Unidad</label>
-                    <select value={f.unidad} onChange={(e) => setF({ ...f, unidad: e.target.value })} style={st.input}>
-                      <option value="ton">ton</option>
-                      <option value="saco">saco</option>
-                      <option value="m3">m³</option>
-                      <option value="pza">pieza</option>
-                      <option value="m2">m²</option>
-                      <option value="ml">ml</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={st.label}>Precio unit.</label>
-                    <input type="number" inputMode="decimal" placeholder="opcional" value={f.pu} onChange={(e) => setF({ ...f, pu: e.target.value })} style={st.input} className="mono" />
-                  </div>
-                </div>
-                {f.cant && f.pu && (
-                  <div style={{ fontSize: 13, color: T.azul, background: T.azulSuave, borderRadius: 6, padding: "8px 10px" }}>
-                    Total calculado: <strong className="mono">{fmt(Number(f.cant) * Number(f.pu))}</strong>
-                  </div>
+                {f.tipo === "gasto" && (
+                  <>
+                    <div>
+                      <label style={st.label}>Material</label>
+                      <input
+                        list="materiales-usados"
+                        placeholder="Ej. cemento, varilla, arena…"
+                        value={f.material}
+                        onChange={(e) => cambiarForm({ material: e.target.value })}
+                        style={st.input}
+                      />
+                      <datalist id="materiales-usados">
+                        {materialesUsados.map((n) => (
+                          <option key={n} value={n} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                      <div>
+                        <label style={st.label}>Cantidad</label>
+                        <input type="number" inputMode="decimal" placeholder="opcional" value={f.cant} onChange={(e) => setF({ ...f, cant: e.target.value })} style={st.input} className="mono" />
+                      </div>
+                      <div>
+                        <label style={st.label}>Unidad</label>
+                        <select value={f.unidad} onChange={(e) => setF({ ...f, unidad: e.target.value })} style={st.input}>
+                          <option value="ton">ton</option>
+                          <option value="saco">saco</option>
+                          <option value="m3">m³</option>
+                          <option value="pza">pieza</option>
+                          <option value="m2">m²</option>
+                          <option value="ml">ml</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={st.label}>Precio unit.</label>
+                        <input type="number" inputMode="decimal" placeholder="opcional" value={f.pu} onChange={(e) => setF({ ...f, pu: e.target.value })} style={st.input} className="mono" />
+                      </div>
+                    </div>
+                    {f.material.trim() && (
+                      <div style={{ fontSize: 12, color: T.gris }}>
+                        {ultPrecio
+                          ? "Último precio a " + nombreDe(f.corresponde) + ": " + fmt(ultPrecio.pu) + " por " + ultPrecio.unidad + " (" + fechaMX(ultPrecio.fecha) + ")"
+                          : "Primera vez que registras este material para " + nombreDe(f.corresponde) + ": no hay precio anterior."}
+                        {difPrecio !== 0 && (
+                          <strong style={{ color: difPrecio > 0 ? T.alerta : T.ok }}>
+                            {" · " + (difPrecio > 0 ? "↑ sube " : "↓ baja ") + fmt(Math.abs(difPrecio)) + " (" + (Math.abs(difPrecio) / ultPrecio.pu * 100).toFixed(1) + "%)"}
+                          </strong>
+                        )}
+                      </div>
+                    )}
+                    {f.cant && f.pu && (
+                      <div style={{ fontSize: 13, color: T.azul, background: T.azulSuave, borderRadius: 6, padding: "8px 10px" }}>
+                        Total calculado: <strong className="mono">{fmt(Math.round(Number(f.cant) * Number(f.pu) * 100) / 100)}</strong>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <div>
-                  <label style={st.label}>Descripción</label>
+                  <label style={st.label}>{f.tipo === "gasto" && f.material.trim() ? "Descripción (opcional)" : "Descripción"}</label>
                   <input
                     placeholder="Ej. surtido de cemento a primo, abono tarjeta papá…"
                     value={f.desc}
@@ -802,7 +897,7 @@ function FinanzasCruzadas() {
                     <label style={st.label}>
                       {f.tipo === "transferencia" ? "Llega a (quién recibe)" : f.tipo === "ingreso" ? "¿A quién corresponde el ingreso?" : "¿A quién corresponde el gasto?"}
                     </label>
-                    <select value={f.corresponde} onChange={(e) => setF({ ...f, corresponde: e.target.value })} style={st.input}>
+                    <select value={f.corresponde} onChange={(e) => cambiarForm({ corresponde: e.target.value })} style={st.input}>
                       <optgroup label="Mis entidades">
                         {mios.map((e) => (
                           <option key={e.id} value={e.id}>{e.nombre}</option>
@@ -1063,6 +1158,41 @@ function FinanzasCruzadas() {
                 </button>
               );
             })}
+
+            {selEnt && precios.length > 0 && (
+              <div style={{ ...st.card, marginTop: 16 }}>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>Precios a {selEnt.nombre}</div>
+                <div style={{ fontSize: 12, color: T.gris, marginBottom: 6 }}>
+                  Se guardan solos con cada entrega. Para cambiar uno, escribe el precio nuevo al registrar la siguiente.
+                </div>
+                {precios.map((p) => {
+                  const actual = p.cambios[p.cambios.length - 1];
+                  const previo = p.cambios.length > 1 ? p.cambios[p.cambios.length - 2] : null;
+                  const pct = previo ? ((actual.pu - previo.pu) / previo.pu) * 100 : 0;
+                  return (
+                    <div key={p.nombre} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: "1px solid " + T.linea }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{p.nombre}</div>
+                        <div style={{ fontSize: 11, color: T.gris }}>
+                          {"Desde " + fechaMX(actual.fecha) + (previo ? " · antes " + fmt(previo.pu) : "")}
+                        </div>
+                        {p.cambios.length > 1 && (
+                          <div style={{ fontSize: 11, color: T.gris }}>
+                            {"Historial: " + p.cambios.slice(-5).map((c) => fechaMX(c.fecha) + " " + fmt(c.pu)).join(" → ")}
+                          </div>
+                        )}
+                      </div>
+                      <div className="mono" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{fmt(actual.pu)}</div>
+                        <div style={{ fontSize: 11, color: previo ? (pct > 0 ? T.alerta : T.ok) : T.gris }}>
+                          {"por " + p.unidad + (previo ? " · " + (pct > 0 ? "↑" : "↓") + Math.abs(pct).toFixed(1) + "%" : "")}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {selEnt && est && (
               <div style={{ ...st.card, marginTop: 16 }}>
