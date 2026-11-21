@@ -214,6 +214,7 @@ function FinanzasCruzadas() {
     pu: "",
     puAuto: "",
     material: "",
+    prestamo: "",
     tipo: "gasto",
     cuentaPago: "c1",
     corresponde: "personal",
@@ -327,7 +328,7 @@ function FinanzasCruzadas() {
       esTexto(x.id) && esFecha(x.fecha) && esMonto(x.monto) && esTexto(x.desc) &&
       ["gasto", "ingreso", "transferencia"].indexOf(x.tipo) >= 0 &&
       idsEnt.has(x.pagador) && idsEnt.has(x.corresponde) && idsCta.has(x.cuenta)
-        ? { id: x.id, fecha: x.fecha, desc: x.desc, monto: x.monto, cant: numONull(x.cant), unidad: typeof x.unidad === "string" ? x.unidad : "ton", pu: numONull(x.pu), material: typeof x.material === "string" && x.material.trim() ? x.material.trim() : null, tipo: x.tipo, pagador: x.pagador, cuenta: x.cuenta, corresponde: x.corresponde }
+        ? { id: x.id, fecha: x.fecha, desc: x.desc, monto: x.monto, cant: numONull(x.cant), unidad: typeof x.unidad === "string" ? x.unidad : "ton", pu: numONull(x.pu), material: typeof x.material === "string" && x.material.trim() ? x.material.trim() : null, prestamo: typeof x.prestamo === "string" && idsEnt.has(x.prestamo) ? x.prestamo : null, tipo: x.tipo, pagador: x.pagador, cuenta: x.cuenta, corresponde: x.corresponde }
         : null);
     const rPen = unir(pendientes, d.pendientes, (x) =>
       esTexto(x.id) && esTexto(x.desc) && esMonto(x.monto) && esFecha(x.fecha) && idsEnt.has(x.entidad)
@@ -415,6 +416,7 @@ function FinanzasCruzadas() {
       unidad: f.unidad,
       pu: esGasto && f.pu ? Number(f.pu) : null,
       material: material || null,
+      prestamo: esGasto && f.prestamo ? f.prestamo : null,
       tipo: f.tipo,
       pagador: cta.entidad,
       cuenta: cta.id,
@@ -637,6 +639,21 @@ function FinanzasCruzadas() {
     return Object.values(grupos).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   };
   const precios = selEnt ? preciosDe(selEnt.id) : [];
+
+  // Control de un préstamo recibido: lo recibido menos lo gastado (gastos marcados como pagados con él). No toca lo que se debe.
+  const cent = (n) => Math.round(n * 100) / 100;
+  const prestamos = otros.filter((e) => e.categoria === "prestamo");
+  const resumenPrestamo = (id) => {
+    const recibido = cent(movs.filter((m) => m.tipo === "ingreso" && m.corresponde === id && esMia(m.pagador)).reduce((t, m) => t + m.monto, 0));
+    const gastos = movs.filter((m) => m.tipo === "gasto" && m.prestamo === id).slice().reverse();
+    gastos.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+    const gastado = cent(gastos.reduce((t, m) => t + m.monto, 0));
+    return { recibido, gastado, porGastar: cent(recibido - gastado), gastos };
+  };
+  const ctrlPrestamo = selEnt && selEnt.categoria === "prestamo" ? resumenPrestamo(selEnt.id) : null;
+  const infoPrestamo = f.tipo === "gasto" && f.prestamo ? resumenPrestamo(f.prestamo) : null;
+  const montoForm = f.cant && f.pu ? cent(Number(f.cant) * Number(f.pu)) : Number(f.monto) || 0;
+  const restantePrestamo = infoPrestamo ? cent(infoPrestamo.porGastar - montoForm) : 0;
 
   const bajarEstadoPNG = () => {
     const canvas = dibujarEstado(selEnt.nombre, categoriaDe(selEnt), est.filas, est.saldo, multi, nombreDe);
@@ -912,6 +929,24 @@ function FinanzasCruzadas() {
                   </div>
                 )}
 
+                {f.tipo === "gasto" && prestamos.length > 0 && (
+                  <div>
+                    <label style={st.label}>¿Se pagó con un préstamo?</label>
+                    <select value={f.prestamo} onChange={(e) => setF({ ...f, prestamo: e.target.value })} style={st.input}>
+                      <option value="">No</option>
+                      {prestamos.map((p) => (
+                        <option key={p.id} value={p.id}>{"Sí, con " + p.nombre}</option>
+                      ))}
+                    </select>
+                    {infoPrestamo && (
+                      <div style={{ fontSize: 12, marginTop: 6, color: restantePrestamo < 0 ? T.alerta : T.azul }}>
+                        {"Préstamo: recibido " + fmt(infoPrestamo.recibido) + " · gastado " + fmt(infoPrestamo.gastado) + " · por gastar " + fmt(infoPrestamo.porGastar) +
+                          (montoForm > 0 ? " → con este gasto " + (restantePrestamo >= 0 ? "quedarían " + fmt(restantePrestamo) : "te pasarías " + fmt(-restantePrestamo)) : "")}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {f.tipo === "gasto" && cuentaDe(f.cuentaPago) && cuentaDe(f.cuentaPago).entidad !== f.corresponde && (
                   <div style={{ background: "#FBEEE7", border: "1px solid " + T.alerta, color: T.alerta, borderRadius: 6, padding: "8px 10px", fontSize: 13 }}>
                     ⚠ Cruce: {(entDe(f.corresponde) || {}).nombre} quedará debiendo a {(entDe(cuentaDe(f.cuentaPago).entidad) || {}).nombre}
@@ -950,6 +985,7 @@ function FinanzasCruzadas() {
                       {m.fecha} · {(cuentaDe(m.cuenta) || {}).nombre}
                       {" → " + ((entDe(m.corresponde) || {}).nombre || "")}
                       {cruce && m.tipo !== "transferencia" && <span style={{ color: T.alerta, fontWeight: 700 }}> · CRUCE</span>}
+                      {m.prestamo && <span style={{ color: T.azul, fontWeight: 700 }}> · PRÉSTAMO</span>}
                     </div>
                   </div>
                   <div className="mono" style={{ fontWeight: 600, fontSize: 14, color: m.tipo === "ingreso" ? T.ok : T.ink, whiteSpace: "nowrap" }}>
@@ -1158,6 +1194,41 @@ function FinanzasCruzadas() {
                 </button>
               );
             })}
+
+            {selEnt && ctrlPrestamo && (
+              <div style={{ ...st.card, marginTop: 16 }}>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>Control del préstamo</div>
+                <div style={{ fontSize: 12, color: T.gris, marginBottom: 10 }}>
+                  Los gastos que marques en Registrar como pagados con este préstamo se descuentan aquí. No cambia lo que debes.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, textAlign: "center" }}>
+                  <div style={{ background: T.azulSuave, borderRadius: 6, padding: "8px 4px" }}>
+                    <div className="mono" style={{ fontWeight: 700, fontSize: 14 }}>{fmt(ctrlPrestamo.recibido)}</div>
+                    <div style={{ fontSize: 11, color: T.gris }}>Recibido</div>
+                  </div>
+                  <div style={{ background: T.azulSuave, borderRadius: 6, padding: "8px 4px" }}>
+                    <div className="mono" style={{ fontWeight: 700, fontSize: 14 }}>{fmt(ctrlPrestamo.gastado)}</div>
+                    <div style={{ fontSize: 11, color: T.gris }}>Gastado</div>
+                  </div>
+                  <div style={{ background: ctrlPrestamo.porGastar < 0 ? "#FBEEE7" : T.azulSuave, borderRadius: 6, padding: "8px 4px" }}>
+                    <div className="mono" style={{ fontWeight: 700, fontSize: 14, color: ctrlPrestamo.porGastar < 0 ? T.alerta : T.ink }}>{fmt(Math.abs(ctrlPrestamo.porGastar))}</div>
+                    <div style={{ fontSize: 11, color: T.gris }}>{ctrlPrestamo.porGastar < 0 ? "Gastado de más" : "Por gastar"}</div>
+                  </div>
+                </div>
+                <div style={{ ...st.label, marginTop: 14 }}>En qué se gastó</div>
+                {ctrlPrestamo.gastos.length === 0 && <div style={{ fontSize: 14, color: T.gris }}>Aún no has registrado gastos con este préstamo.</div>}
+                {ctrlPrestamo.gastos.map((g) => (
+                  <div key={g.id} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: "1px solid " + T.linea, fontSize: 13 }}>
+                    <div className="mono" style={{ width: 78, flexShrink: 0, color: T.gris, fontSize: 12 }}>{fechaMX(g.fecha)}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div>{g.desc}</div>
+                      <div style={{ fontSize: 11, color: T.gris }}>{"corresponde a " + nombreDe(g.corresponde)}</div>
+                    </div>
+                    <div className="mono" style={{ whiteSpace: "nowrap" }}>{fmt(g.monto)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {selEnt && precios.length > 0 && (
               <div style={{ ...st.card, marginTop: 16 }}>
