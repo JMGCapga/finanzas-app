@@ -1,18 +1,421 @@
-<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Finanzas — Control de operación</title>
-<link rel="icon" href="data:,">
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script>
-window.storage = {
-  get: async (k) => { const v = localStorage.getItem(k); return v == null ? null : { value: v }; },
-  set: async (k, v) => { localStorage.setItem(k, v); return true; }
-};
-</script>
-<style>body{margin:0}</style>
-</head><body><div id="root"></div>
-<script>
-const{useState,useEffect,useMemo}=React,T={bg:"#ECEDEA",card:"#FFFFFF",ink:"#20241F",gris:"#6B7066",linea:"#D5D7D0",azul:"#1F3A5F",azulSuave:"#E4EAF2",alerta:"#B5451B",ok:"#3A6B4A"},ENTIDADES_INICIALES=[{id:"personal",nombre:"Personal (JM)",tipo:"mio"},{id:"capga",nombre:"Capga Workshop",tipo:"mio"},{id:"troncoso",nombre:"Materiales Troncoso",tipo:"mio"},{id:"cemcoyaa",nombre:"Abastecedora Cemcoyaa",tipo:"mio"},{id:"itzayana",nombre:"Itzayana",tipo:"mio"},{id:"hermano",nombre:"Hermano",tipo:"otro"},{id:"primo",nombre:"Primo",tipo:"otro"},{id:"papa",nombre:"Pap\xE1",tipo:"otro"}],CUENTAS_INICIALES=[{id:"c1",entidad:"personal",nombre:"Tarjeta personal"},{id:"c2",entidad:"personal",nombre:"Efectivo JM"},{id:"c3",entidad:"capga",nombre:"Tarjeta Capga"},{id:"c4",entidad:"troncoso",nombre:"Cuenta Troncoso"},{id:"c5",entidad:"papa",nombre:"Tarjeta de pap\xE1"},{id:"c6",entidad:"cemcoyaa",nombre:"Terminal Cemcoyaa BBVA"},{id:"c7",entidad:"itzayana",nombre:"Terminal Itzayana Mercado Pago"},{id:"c8",entidad:"itzayana",nombre:"Terminal Itzayana BBVA"}],fmt=s=>"$"+Number(s||0).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2}),hoy=()=>new Date().toISOString().slice(0,10);function FinanzasCruzadas(){const[s,R]=useState(ENTIDADES_INICIALES),[C,I]=useState(CUENTAS_INICIALES),[u,P]=useState([]),[S,M]=useState([]),[r,N]=useState({desc:"",monto:"",fecha:hoy(),entidad:"troncoso"}),[x,W]=useState([]),[c,A]=useState({desc:"",monto:"",fecha:hoy()}),[f,X]=useState("registrar"),[_,$]=useState(!0),[j,F]=useState(null),[t,m]=useState({fecha:hoy(),desc:"",monto:"",cant:"",unidad:"ton",pu:"",tipo:"gasto",cuentaPago:"c1",corresponde:"personal"}),[q,L]=useState(""),[y,D]=useState({nombre:"",entidad:"personal"});useEffect(()=>{(async()=>{try{const e=await window.storage.get("finanzas-datos");if(e&&e.value){const o=JSON.parse(e.value),h=[...o.entidades&&o.entidades.length?o.entidades:[]];ENTIDADES_INICIALES.forEach(g=>{const z=h.find(B=>B.id===g.id);z?z.tipo=g.tipo:h.push(g)}),R(h);const l=[...o.cuentas&&o.cuentas.length?o.cuentas:[]];CUENTAS_INICIALES.forEach(g=>{l.find(z=>z.id===g.id||z.nombre===g.nombre)||l.push(g)}),I(l),o.movs&&P(o.movs),o.pendientes&&M(o.pendientes),o.porCobrar&&W(o.porCobrar)}}catch{}$(!1)})()},[]);const v=async e=>{try{await window.storage.set("finanzas-datos",JSON.stringify({entidades:e.entidades||s,cuentas:e.cuentas||C,movs:e.movs||u,pendientes:e.pendientes||S,porCobrar:e.porCobrar||x})),F("Guardado \u2713"),setTimeout(()=>F(null),1500)}catch{F("No se pudo guardar")}},p=e=>C.find(o=>o.id===e),d=e=>s.find(o=>o.id===e),K=()=>{const e=t.cant&&t.pu?Number(t.cant)*Number(t.pu):Number(t.monto);if(!e||e<=0||!t.desc.trim())return;const o=p(t.cuentaPago),i=t.cant&&t.pu?" ("+t.cant+" "+t.unidad+" \xD7 "+fmt(t.pu)+")":"",n=[{id:Date.now().toString(),fecha:t.fecha,desc:t.desc.trim()+i,monto:e,cant:t.cant?Number(t.cant):null,unidad:t.unidad,pu:t.pu?Number(t.pu):null,tipo:t.tipo,pagador:o.entidad,cuenta:o.id,corresponde:t.corresponde},...u];P(n),v({movs:n}),m({...t,desc:"",monto:""})},Q=e=>{const o=u.filter(i=>i.id!==e);P(o),v({movs:o})},Y=()=>{const e=q.trim();if(!e)return;const o="e"+Date.now(),i=[...s,{id:o,nombre:e,tipo:"otro"}];R(i),v({entidades:i}),L("")},Z=()=>{const e=y.nombre.trim();if(!e)return;const o=[...C,{id:"c"+Date.now(),entidad:y.entidad,nombre:e}];I(o),v({cuentas:o}),D({...y,nombre:""})},b=useMemo(()=>{const e={},o=(n,l)=>n+"|"+l;u.forEach(n=>{n.pagador!==n.corresponde&&(n.tipo==="gasto"?e[o(n.corresponde,n.pagador)]=(e[o(n.corresponde,n.pagador)]||0)+n.monto:n.tipo==="transferencia"?e[o(n.pagador,n.corresponde)]=(e[o(n.pagador,n.corresponde)]||0)-n.monto:n.tipo==="ingreso"&&(e[o(n.pagador,n.corresponde)]=(e[o(n.pagador,n.corresponde)]||0)+n.monto))});const i=[],h=new Set;return s.forEach(n=>s.forEach(l=>{if(n.id===l.id)return;const g=[n.id,l.id].sort().join("|");if(h.has(g))return;h.add(g);const z=e[o(n.id,l.id)]||0,B=e[o(l.id,n.id)]||0,w=z-B;Math.abs(w)>.005&&i.push(w>0?{deudor:n.id,acreedor:l.id,monto:w}:{deudor:l.id,acreedor:n.id,monto:-w})})),i.sort((n,l)=>l.monto-n.monto)},[u,s]),G=hoy().slice(0,7),[V,ee]=useState(G),E=u.filter(e=>e.fecha.slice(0,7)===V),O=useMemo(()=>{const e={};return s.forEach(o=>e[o.id]={gasto:0,ingreso:0}),E.forEach(o=>{e[o.corresponde]&&(o.tipo==="gasto"&&(e[o.corresponde].gasto+=o.monto),o.tipo==="ingreso"&&(e[o.corresponde].ingreso+=o.monto))}),e},[E,s]),oe=useMemo(()=>{const e={};return E.forEach(o=>{o.tipo==="gasto"&&(e[o.cuenta]=(e[o.cuenta]||0)+o.monto)}),e},[E]),te=useMemo(()=>{const e=new Set(u.map(o=>o.fecha.slice(0,7)));return e.add(G),[...e].sort().reverse()},[u]);if(_)return React.createElement("div",{style:{background:T.bg,minHeight:"100vh",display:"grid",placeItems:"center",fontFamily:"system-ui"}},"Cargando\u2026");const a={input:{width:"100%",padding:"10px 12px",border:"1px solid "+T.linea,borderRadius:6,fontSize:15,background:T.card,color:T.ink,boxSizing:"border-box",fontFamily:"inherit"},label:{fontSize:11,textTransform:"uppercase",letterSpacing:"0.08em",color:T.gris,marginBottom:4,display:"block",fontWeight:600},card:{background:T.card,border:"1px solid "+T.linea,borderRadius:8,padding:16,marginBottom:12},btnAzul:{padding:"10px 16px",background:T.azul,color:"#fff",border:"none",borderRadius:6,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}},H=s.filter(e=>e.tipo==="mio"),ae=s.filter(e=>e.tipo!=="mio"),k=e=>(d(e)||{}).tipo==="mio",ne=()=>{if(!r.desc.trim()||!r.monto||Number(r.monto)<=0)return;const e=[...S,{id:"p"+Date.now(),desc:r.desc.trim(),monto:Number(r.monto),fecha:r.fecha,entidad:r.entidad}].sort((o,i)=>o.fecha.localeCompare(i.fecha));M(e),v({pendientes:e}),N({...r,desc:"",monto:""})},ie=e=>{const o=S.filter(i=>i.id!==e);M(o),v({pendientes:o})},J=S.reduce((e,o)=>e+o.monto,0),re=()=>{if(!c.desc.trim()||!c.monto||Number(c.monto)<=0)return;const e=[...x,{id:"q"+Date.now(),desc:c.desc.trim(),monto:Number(c.monto),fecha:c.fecha}].sort((o,i)=>o.fecha.localeCompare(i.fecha));W(e),v({porCobrar:e}),A({...c,desc:"",monto:""})},de=e=>{const o=x.filter(i=>i.id!==e);W(o),v({porCobrar:o})},se=x.reduce((e,o)=>e+o.monto,0),le=e=>Math.floor((new Date(hoy())-new Date(e))/864e5),U=b.filter(e=>k(e.deudor)&&!k(e.acreedor)).reduce((e,o)=>e+o.monto,0),ce=b.filter(e=>!k(e.deudor)&&k(e.acreedor)).reduce((e,o)=>e+o.monto,0),pe=b.filter(e=>k(e.deudor)&&k(e.acreedor)).reduce((e,o)=>e+o.monto,0);return React.createElement("div",{style:{background:T.bg,minHeight:"100vh",fontFamily:"'Archivo', system-ui, sans-serif",color:T.ink}},React.createElement("style",null,"@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=IBM+Plex+Mono:wght@400;600&display=swap'); button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid "+T.azul+"; outline-offset: 1px; } .mono { font-family: 'IBM Plex Mono', monospace; }"),React.createElement("header",{style:{background:T.azul,color:"#fff",padding:"18px 16px 14px"}},React.createElement("div",{style:{maxWidth:560,margin:"0 auto"}},React.createElement("div",{style:{fontSize:11,letterSpacing:"0.15em",textTransform:"uppercase",opacity:.75}},"Vale de obra \xB7 finanzas"),React.createElement("h1",{style:{margin:"2px 0 0",fontSize:22,fontWeight:800}},"Cruces y saldos"))),React.createElement("nav",{style:{display:"flex",maxWidth:560,margin:"0 auto",borderBottom:"1px solid "+T.linea}},[["registrar","Registrar"],["cruces","Cruces"],["resumen","Resumen"],["directorio","Directorio"]].map(([e,o])=>React.createElement("button",{key:e,onClick:()=>X(e),style:{flex:1,padding:"12px 0",background:"none",border:"none",borderBottom:f===e?"3px solid "+T.azul:"3px solid transparent",fontWeight:f===e?800:400,fontSize:13,color:f===e?T.azul:T.gris,cursor:"pointer",fontFamily:"inherit"}},o,e==="cruces"&&b.length>0&&React.createElement("span",{className:"mono",style:{marginLeft:5,background:T.alerta,color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:11}},b.length)))),React.createElement("main",{style:{maxWidth:560,margin:"0 auto",padding:16}},j&&React.createElement("div",{style:{fontSize:12,color:T.ok,marginBottom:8,textAlign:"right"}},j),f==="registrar"&&React.createElement(React.Fragment,null,React.createElement("div",{style:a.card},React.createElement("div",{style:{display:"flex",gap:8,marginBottom:12}},[["gasto","Gasto / Surtido"],["ingreso","Ingreso"],["transferencia","Transferencia / Abono"]].map(([e,o])=>React.createElement("button",{key:e,onClick:()=>m({...t,tipo:e}),style:{flex:1,padding:"8px 4px",borderRadius:6,border:"1px solid "+(t.tipo===e?T.azul:T.linea),background:t.tipo===e?T.azulSuave:T.card,color:t.tipo===e?T.azul:T.gris,fontWeight:t.tipo===e?700:400,fontSize:12,cursor:"pointer",fontFamily:"inherit"}},o))),React.createElement("div",{style:{display:"grid",gap:10}},React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},React.createElement("div",null,React.createElement("label",{style:a.label},"Fecha"),React.createElement("input",{type:"date",value:t.fecha,onChange:e=>m({...t,fecha:e.target.value}),style:a.input})),React.createElement("div",null,React.createElement("label",{style:a.label},"Monto (MXN)"),React.createElement("input",{type:"number",inputMode:"decimal",placeholder:"0.00",value:t.monto,onChange:e=>m({...t,monto:e.target.value}),style:a.input,className:"mono"}))),React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}},React.createElement("div",null,React.createElement("label",{style:a.label},"Cantidad"),React.createElement("input",{type:"number",inputMode:"decimal",placeholder:"opcional",value:t.cant,onChange:e=>m({...t,cant:e.target.value}),style:a.input,className:"mono"})),React.createElement("div",null,React.createElement("label",{style:a.label},"Unidad"),React.createElement("select",{value:t.unidad,onChange:e=>m({...t,unidad:e.target.value}),style:a.input},React.createElement("option",{value:"ton"},"ton"),React.createElement("option",{value:"saco"},"saco"),React.createElement("option",{value:"m3"},"m\xB3"),React.createElement("option",{value:"pza"},"pieza"),React.createElement("option",{value:"m2"},"m\xB2"),React.createElement("option",{value:"ml"},"ml"))),React.createElement("div",null,React.createElement("label",{style:a.label},"Precio unit."),React.createElement("input",{type:"number",inputMode:"decimal",placeholder:"opcional",value:t.pu,onChange:e=>m({...t,pu:e.target.value}),style:a.input,className:"mono"}))),t.cant&&t.pu&&React.createElement("div",{style:{fontSize:13,color:T.azul,background:T.azulSuave,borderRadius:6,padding:"8px 10px"}},"Total calculado: ",React.createElement("strong",{className:"mono"},fmt(Number(t.cant)*Number(t.pu)))),React.createElement("div",null,React.createElement("label",{style:a.label},"Descripci\xF3n"),React.createElement("input",{placeholder:"Ej. surtido de cemento a primo, abono tarjeta pap\xE1\u2026",value:t.desc,onChange:e=>m({...t,desc:e.target.value}),style:a.input})),React.createElement("div",null,React.createElement("label",{style:a.label},t.tipo==="ingreso"?"Entra a la cuenta":t.tipo==="transferencia"?"Sale de (qui\xE9n paga)":"\xBFCon qu\xE9 se pag\xF3?"),React.createElement("select",{value:t.cuentaPago,onChange:e=>m({...t,cuentaPago:e.target.value}),style:a.input},C.map(e=>React.createElement("option",{key:e.id,value:e.id},e.nombre," \u2014 ",(d(e.entidad)||{}).nombre)))),React.createElement("div",null,React.createElement("label",{style:a.label},t.tipo==="transferencia"?"Llega a (qui\xE9n recibe)":t.tipo==="ingreso"?"\xBFA qui\xE9n corresponde el ingreso?":"\xBFA qui\xE9n corresponde el gasto?"),React.createElement("select",{value:t.corresponde,onChange:e=>m({...t,corresponde:e.target.value}),style:a.input},React.createElement("optgroup",{label:"Mis entidades"},H.map(e=>React.createElement("option",{key:e.id,value:e.id},e.nombre))),React.createElement("optgroup",{label:"Personas y otros negocios"},ae.map(e=>React.createElement("option",{key:e.id,value:e.id},e.nombre))))),t.tipo==="gasto"&&p(t.cuentaPago)&&p(t.cuentaPago).entidad!==t.corresponde&&React.createElement("div",{style:{background:"#FBEEE7",border:"1px solid "+T.alerta,color:T.alerta,borderRadius:6,padding:"8px 10px",fontSize:13}},"\u26A0 Cruce: ",(d(t.corresponde)||{}).nombre," quedar\xE1 debiendo a ",(d(p(t.cuentaPago).entidad)||{}).nombre),t.tipo==="ingreso"&&p(t.cuentaPago)&&p(t.cuentaPago).entidad!==t.corresponde&&React.createElement("div",{style:{background:"#FBEEE7",border:"1px solid "+T.alerta,color:T.alerta,borderRadius:6,padding:"8px 10px",fontSize:13}},"\u26A0 Cobro cruzado: ",(d(p(t.cuentaPago).entidad)||{}).nombre," quedar\xE1 debiendo a ",(d(t.corresponde)||{}).nombre),t.tipo==="transferencia"&&p(t.cuentaPago)&&p(t.cuentaPago).entidad!==t.corresponde&&React.createElement("div",{style:{background:T.azulSuave,color:T.azul,borderRadius:6,padding:"8px 10px",fontSize:13}},"Esto abona a la deuda de ",(d(p(t.cuentaPago).entidad)||{}).nombre," con ",(d(t.corresponde)||{}).nombre," (o crea saldo a favor)."),React.createElement("button",{onClick:K,style:{...a.btnAzul,padding:"12px 0",fontSize:15}},"Registrar movimiento"))),React.createElement("div",{style:{...a.label,marginTop:8}},"\xDAltimos movimientos"),u.length===0&&React.createElement("div",{style:{...a.card,color:T.gris,fontSize:14}},"Sin movimientos todav\xEDa. Registra el primero arriba."),u.slice(0,15).map(e=>{const o=e.pagador!==e.corresponde;return React.createElement("div",{key:e.id,style:{...a.card,padding:12,display:"flex",alignItems:"center",gap:10}},React.createElement("div",{style:{flex:1,minWidth:0}},React.createElement("div",{style:{fontSize:14,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},e.desc),React.createElement("div",{style:{fontSize:12,color:T.gris}},e.fecha," \xB7 ",(p(e.cuenta)||{}).nombre," \u2192 "+((d(e.corresponde)||{}).nombre||""),o&&e.tipo!=="transferencia"&&React.createElement("span",{style:{color:T.alerta,fontWeight:700}}," \xB7 CRUCE"))),React.createElement("div",{className:"mono",style:{fontWeight:600,fontSize:14,color:e.tipo==="ingreso"?T.ok:T.ink,whiteSpace:"nowrap"}},e.tipo==="ingreso"?"+":"\u2212",fmt(e.monto)),React.createElement("button",{onClick:()=>Q(e.id),"aria-label":"Borrar movimiento",style:{background:"none",border:"none",color:T.gris,cursor:"pointer",fontSize:16,padding:4}},"\xD7"))})),f==="cruces"&&React.createElement(React.Fragment,null,React.createElement("div",{style:{...a.card,background:T.ink,color:"#fff",border:"none"}},React.createElement("div",{style:{fontSize:11,textTransform:"uppercase",letterSpacing:"0.1em",opacity:.7,marginBottom:8}},"El hueco real"),React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,textAlign:"center"}},React.createElement("div",null,React.createElement("div",{className:"mono",style:{fontSize:17,fontWeight:600,color:"#F0A68C"}},fmt(U)),React.createElement("div",{style:{fontSize:11,opacity:.75}},"Debes fuera")),React.createElement("div",null,React.createElement("div",{className:"mono",style:{fontSize:17,fontWeight:600,color:"#9CC7A8"}},fmt(ce)),React.createElement("div",{style:{fontSize:11,opacity:.75}},"Te deben")),React.createElement("div",null,React.createElement("div",{className:"mono",style:{fontSize:17,fontWeight:600,color:"#A9C3E8"}},fmt(pe)),React.createElement("div",{style:{fontSize:11,opacity:.75}},"Entre tus empresas"))),React.createElement("div",{style:{borderTop:"1px solid rgba(255,255,255,0.2)",marginTop:10,paddingTop:8,display:"flex",justifyContent:"space-between",fontSize:13}},React.createElement("span",{style:{opacity:.8}},"+ Facturas y surtidos por delante"),React.createElement("span",{className:"mono",style:{fontWeight:600}},fmt(J))),React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:13,marginTop:4}},React.createElement("span",{style:{opacity:.8}},"\u2212 Por cobrar con fecha (notas, clientes)"),React.createElement("span",{className:"mono",style:{fontWeight:600,color:"#9CC7A8"}},fmt(se))),React.createElement("div",{style:{display:"flex",justifyContent:"space-between",fontSize:14,marginTop:4}},React.createElement("span",{style:{fontWeight:800}},"Hueco total"),React.createElement("span",{className:"mono",style:{fontWeight:600,color:"#F0A68C"}},fmt(U+J))),React.createElement("div",{style:{fontSize:12,opacity:.75,marginTop:8,textAlign:"center"}},"Dinero en tus cuentas que ya est\xE1 comprometido. R\xE9stalo antes de gastar.")),React.createElement("div",{style:a.label},"Saldos entre entidades y personas (neteados)"),b.length===0?React.createElement("div",{style:{...a.card,color:T.ok,fontSize:14}},"\u2713 Todo en ceros. Nadie le debe a nadie."):b.map((e,o)=>{const i=(d(e.deudor)||{}).tipo==="mio";return React.createElement("div",{key:o,style:{...a.card,borderLeft:"4px solid "+(i?T.alerta:T.ok)}},React.createElement("div",{style:{fontSize:14}},React.createElement("strong",null,(d(e.deudor)||{}).nombre)," le debe a ",React.createElement("strong",null,(d(e.acreedor)||{}).nombre)),React.createElement("div",{className:"mono",style:{fontSize:24,fontWeight:600,marginTop:4}},fmt(e.monto)),React.createElement("div",{style:{fontSize:12,color:T.gris,marginTop:6}},i?"Debes t\xFA: para abonar, registra una transferencia hacia "+((d(e.acreedor)||{}).nombre||"")+".":"Te deben (o es anticipo de cliente): cada gasto/surtido que registres a su nombre lo va descontando."))}),React.createElement("div",{style:{...a.label,marginTop:16}},"Por cobrar con fecha (notas de cr\xE9dito, clientes)"),x.length===0&&React.createElement("div",{style:{...a.card,color:T.gris,fontSize:14}},"Nada anotado. Registra aqu\xED cada nota de cr\xE9dito esperada con su fecha te\xF3rica."),x.map(e=>{const o=le(e.fecha);return React.createElement("div",{key:e.id,style:{...a.card,padding:12,display:"flex",alignItems:"center",gap:10,borderLeft:"4px solid "+(o>0?T.alerta:T.ok)}},React.createElement("div",{style:{flex:1,minWidth:0}},React.createElement("div",{style:{fontSize:14,fontWeight:600}},e.desc),React.createElement("div",{style:{fontSize:12,color:o>0?T.alerta:T.gris,fontWeight:o>0?700:400}},o>0?"ATRASADA "+o+(o===1?" d\xEDa":" d\xEDas")+" \xB7 deb\xEDa caer "+e.fecha:"Debe caer: "+e.fecha)),React.createElement("div",{className:"mono",style:{fontWeight:600,fontSize:14,whiteSpace:"nowrap"}},fmt(e.monto)),React.createElement("button",{onClick:()=>de(e.id),"aria-label":"Marcar como cobrada",style:{background:T.azulSuave,color:T.azul,border:"none",borderRadius:6,cursor:"pointer",fontSize:12,padding:"6px 8px",fontWeight:700,fontFamily:"inherit"}},"\u2713"))}),React.createElement("div",{style:{...a.card,padding:12}},React.createElement("div",{style:{display:"grid",gap:8}},React.createElement("input",{placeholder:"Ej. nota de cr\xE9dito Cemex junio\u2026",value:c.desc,onChange:e=>A({...c,desc:e.target.value}),style:a.input}),React.createElement("div",{style:{display:"flex",gap:8}},React.createElement("input",{type:"number",inputMode:"decimal",placeholder:"Monto",value:c.monto,onChange:e=>A({...c,monto:e.target.value}),style:{...a.input,flex:1},className:"mono"}),React.createElement("input",{type:"date",value:c.fecha,onChange:e=>A({...c,fecha:e.target.value}),style:{...a.input,flex:1}}),React.createElement("button",{onClick:re,style:a.btnAzul},"+")))),React.createElement("div",{style:{...a.label,marginTop:16}},"Facturas por pagar y material por surtir"),S.length===0&&React.createElement("div",{style:{...a.card,color:T.gris,fontSize:14}},"Sin compromisos anotados."),S.map(e=>{const o=e.fecha<hoy();return React.createElement("div",{key:e.id,style:{...a.card,padding:12,display:"flex",alignItems:"center",gap:10,borderLeft:"4px solid "+(o?T.alerta:T.linea)}},React.createElement("div",{style:{flex:1,minWidth:0}},React.createElement("div",{style:{fontSize:14,fontWeight:600}},e.desc),React.createElement("div",{style:{fontSize:12,color:o?T.alerta:T.gris}},o?"VENCIDA \xB7 ":"L\xEDmite: ",e.fecha," \xB7 ",(d(e.entidad)||{}).nombre||"")),React.createElement("div",{className:"mono",style:{fontWeight:600,fontSize:14,whiteSpace:"nowrap"}},fmt(e.monto)),React.createElement("button",{onClick:()=>ie(e.id),"aria-label":"Marcar como cumplida",style:{background:T.azulSuave,color:T.azul,border:"none",borderRadius:6,cursor:"pointer",fontSize:12,padding:"6px 8px",fontWeight:700,fontFamily:"inherit"}},"\u2713"))}),React.createElement("div",{style:{...a.card,padding:12}},React.createElement("div",{style:{display:"grid",gap:8}},React.createElement("input",{placeholder:"Ej. factura proveedor, surtir varilla a primo\u2026",value:r.desc,onChange:e=>N({...r,desc:e.target.value}),style:a.input}),React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},React.createElement("input",{type:"number",inputMode:"decimal",placeholder:"Monto",value:r.monto,onChange:e=>N({...r,monto:e.target.value}),style:a.input,className:"mono"}),React.createElement("input",{type:"date",value:r.fecha,onChange:e=>N({...r,fecha:e.target.value}),style:a.input})),React.createElement("div",{style:{display:"flex",gap:8}},React.createElement("select",{value:r.entidad,onChange:e=>N({...r,entidad:e.target.value}),style:{...a.input,flex:1}},s.map(e=>React.createElement("option",{key:e.id,value:e.id},e.nombre))),React.createElement("button",{onClick:ne,style:a.btnAzul},"+ Anotar")),React.createElement("div",{style:{fontSize:12,color:T.gris}},"Al cumplirla, m\xE1rcala con \u2713 y registra el movimiento real en la pesta\xF1a Registrar."))),React.createElement("div",{style:{...a.card,background:T.azulSuave,border:"none",fontSize:13,color:T.azul}},'Anticipo de cliente = transferencia que \xE9l te hace \u2192 aparece como que t\xFA le debes (en material o dinero). Cada surtido que registres como gasto "a su nombre" descuenta ese saldo. Los abonos parciales a tarjetas prestadas funcionan igual: transferencia hacia esa persona.')),f==="resumen"&&React.createElement(React.Fragment,null,React.createElement("div",{style:{marginBottom:12}},React.createElement("label",{style:a.label},"Mes"),React.createElement("select",{value:V,onChange:e=>ee(e.target.value),style:a.input},te.map(e=>React.createElement("option",{key:e,value:e},e)))),React.createElement("div",{style:a.label},"Por entidad"),H.map(e=>React.createElement("div",{key:e.id,style:{...a.card,display:"flex",justifyContent:"space-between",alignItems:"center"}},React.createElement("div",{style:{fontWeight:600,fontSize:14}},e.nombre),React.createElement("div",{style:{textAlign:"right"}},React.createElement("div",{className:"mono",style:{fontSize:13,color:T.ok}},"+",fmt((O[e.id]||{}).ingreso)),React.createElement("div",{className:"mono",style:{fontSize:13,color:T.alerta}},"\u2212",fmt((O[e.id]||{}).gasto))))),React.createElement("div",{style:{...a.label,marginTop:16}},"Gasto por tarjeta / cuenta"),C.map(e=>React.createElement("div",{key:e.id,style:{...a.card,padding:12,display:"flex",justifyContent:"space-between"}},React.createElement("div",{style:{fontSize:14}},e.nombre,React.createElement("span",{style:{color:T.gris,fontSize:12}}," \xB7 ",(d(e.entidad)||{}).nombre||"")),React.createElement("div",{className:"mono",style:{fontWeight:600,fontSize:14}},fmt(oe[e.id]))))),f==="directorio"&&React.createElement(React.Fragment,null,React.createElement("div",{style:a.label},"Personas y negocios"),React.createElement("div",{style:a.card},s.map(e=>React.createElement("div",{key:e.id,style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid "+T.linea,fontSize:14}},React.createElement("span",null,e.nombre),React.createElement("span",{style:{color:T.gris,fontSize:12}},e.tipo==="mio"?"m\xEDa":"externo"))),React.createElement("div",{style:{display:"flex",gap:8,marginTop:12}},React.createElement("input",{placeholder:"Nueva persona o negocio",value:q,onChange:e=>L(e.target.value),style:{...a.input,flex:1}}),React.createElement("button",{onClick:Y,style:a.btnAzul},"+"))),React.createElement("div",{style:{...a.label,marginTop:16}},"Cuentas y tarjetas"),React.createElement("div",{style:a.card},C.map(e=>React.createElement("div",{key:e.id,style:{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid "+T.linea,fontSize:14}},React.createElement("span",null,e.nombre),React.createElement("span",{style:{color:T.gris,fontSize:12}},(d(e.entidad)||{}).nombre||""))),React.createElement("div",{style:{display:"grid",gap:8,marginTop:12}},React.createElement("input",{placeholder:"Nueva cuenta o tarjeta",value:y.nombre,onChange:e=>D({...y,nombre:e.target.value}),style:a.input}),React.createElement("div",{style:{display:"flex",gap:8}},React.createElement("select",{value:y.entidad,onChange:e=>D({...y,entidad:e.target.value}),style:{...a.input,flex:1}},s.map(e=>React.createElement("option",{key:e.id,value:e.id},e.nombre))),React.createElement("button",{onClick:Z,style:a.btnAzul},"+")))))))}ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(FinanzasCruzadas));
-</script></body></html>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Finanzas — Control de operación</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #0A0E27; color: #FFFFFF; }
+    input, select, button { font-family: inherit; }
+    input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+    const SUPABASE_URL = "https://oqwbyvjgyvlmofxbgvar.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_lnovL7ZW22et_KNVw2Gj3Q_QESsrYvs";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const KEY = "finanzas-app:v6";
+    const COLORES = { fondo: "#0A0E27", fondoCard: "#111B3C", fondoHover: "#1A2847", texto: "#FFFFFF", textoSecundario: "#A0AEC0", acento: "#00D9FF", acentoVerde: "#10B981", acentoRojo: "#EF4444", accentoOrange: "#F97316", borde: "#1E3A5F" };
+    function cargar() { try { const data = localStorage.getItem(KEY); if (data) return JSON.parse(data); } catch (e) {} return null; }
+    function guardar(data) { try { localStorage.setItem(KEY, JSON.stringify(data)); return true; } catch (e) { return false; } }
+    const SEMILLA = { cuentas: [ { id: "c1", nombre: "Hermano", rol: "Edgar · Nómina", nota: "" }, { id: "c2", nombre: "Lalo", rol: "Primo · Cliente", nota: "" }, { id: "c3", nombre: "Papá", rol: "Familia", nota: "" }, { id: "c4", nombre: "JMGC", rol: "Razón social", nota: "" }, { id: "c5", nombre: "Cemcoyaa", rol: "Razón social", nota: "" }, { id: "c6", nombre: "Itzayana", rol: "Razón social", nota: "" } ], movimientos: [ { id: "m1", cuentaId: "c1", fecha: "2026-07-13", concepto: "Nómina", monto: 47470.64, tipo: "recibi", medio: "nómina", creado: 1725811200000 }, { id: "m2", cuentaId: "c1", fecha: "2026-07-28", concepto: "Nómina", monto: 40995.15, tipo: "recibi", medio: "nómina", creado: 1725897600000 }, { id: "m3", cuentaId: "c1", fecha: "2026-08-13", concepto: "Nómina", monto: 44232.89, tipo: "recibi", medio: "nómina", creado: 1726161600000 }, { id: "m4", cuentaId: "c1", fecha: "2026-08-28", concepto: "Nómina", monto: 44232.9, tipo: "recibi", medio: "nómina", creado: 1726248000000 }, { id: "m5", cuentaId: "c1", fecha: "2026-09-08", concepto: "Entregas julio-agosto: efectivo, transferencias, descuentos de deuda", monto: 181000, tipo: "entregue", medio: "acumulado", creado: 1725811200000 } ], obligaciones: [], pendientes: [] };
+    const mxn = (n) => (n < 0 ? "-" : "") + "$" + Math.abs(n).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const hoy = () => new Date().toISOString().slice(0, 10);
+    const uid = () => Math.random().toString(36).slice(2, 10);
+    const efecto = (mov) => (mov.tipo === "recibi" ? -mov.monto : mov.monto);
+    const r2 = (n) => Math.round(n * 100) / 100;
+    const sinAcentos = (t) => String(t == null ? "" : t).normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+    const tipoDeTexto = (t) => { const x = sinAcentos(t); if (x.indexOf("entreg") === 0) return "entregue"; if (x.indexOf("recib") === 0) return "recibi"; return null; };
+    const montoDeTexto = (t) => { const n = parseFloat(String(t == null ? "" : t).replace(/[^0-9.]/g, "")); return isNaN(n) ? 0 : n; };
+    const fechaDeTexto = (t) => { const x = String(t == null ? "" : t).trim(); const m = x.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if (m) return m[3] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2); return /^\d{4}-\d{2}-\d{2}/.test(x) ? x.slice(0, 10) : ""; };
+    const partirLineaCSV = (linea) => { const out = []; let cur = ""; let comillas = false; for (let i = 0; i < linea.length; i++) { const ch = linea[i]; if (ch === '"') { if (comillas && linea[i + 1] === '"') { cur += '"'; i++; } else { comillas = !comillas; } } else if (ch === "," && !comillas) { out.push(cur.trim()); cur = ""; } else { cur += ch; } } out.push(cur.trim()); return out; };
+    const fechaCorta = (f) => { const [a, m, d] = f.split("-"); return `${d}/${m}`; };
+    
+    function FinanzasApp() {
+      const [data, setData] = useState(() => { const local = cargar(); return local || SEMILLA; });
+      const [cuentas, setCuentas] = useState(data.cuentas);
+      const [movimientos, setMovimientos] = useState(data.movimientos);
+      const [obligaciones, setObligaciones] = useState(data.obligaciones);
+      const [pendientes, setPendientes] = useState(data.pendientes);
+      const [vista, setVista] = useState("libreta");
+      const [cuentaActiva, setCuentaActiva] = useState(data.cuentas?.[0]?.id);
+
+      useEffect(() => {
+        const newData = { cuentas, movimientos, obligaciones, pendientes };
+        setData(newData);
+        guardar(newData);
+        const canal = supabase.channel("db-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "movimientos" }, (payload) => {
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              setMovimientos((prev) => { const existe = prev.find((m) => m.id === payload.new.id); if (existe) return prev.map((m) => (m.id === payload.new.id ? payload.new : m)); return [...prev, payload.new]; });
+            } else if (payload.eventType === "DELETE") {
+              setMovimientos((prev) => prev.filter((m) => m.id !== payload.old.id));
+            }
+          })
+          .on("postgres_changes", { event: "*", schema: "public", table: "cuentas" }, (payload) => {
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              setCuentas((prev) => { const existe = prev.find((c) => c.id === payload.new.id); if (existe) return prev.map((c) => (c.id === payload.new.id ? payload.new : c)); return [...prev, payload.new]; });
+            }
+          })
+          .on("postgres_changes", { event: "*", schema: "public", table: "pendientes" }, (payload) => {
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              setPendientes((prev) => { const existe = prev.find((p) => p.id === payload.new.id); if (existe) return prev.map((p) => (p.id === payload.new.id ? payload.new : p)); return [...prev, payload.new]; });
+            } else if (payload.eventType === "DELETE") {
+              setPendientes((prev) => prev.filter((p) => p.id !== payload.old.id));
+            }
+          })
+          .subscribe();
+        return () => { canal.unsubscribe(); };
+      }, [cuentas, movimientos, obligaciones, pendientes]);
+
+      const exportarRespaldo = () => {
+        const blob = new Blob([JSON.stringify({ cuentas, movimientos, obligaciones, pendientes }, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "finanzas-respaldo-" + hoy() + ".json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      return (
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30 }}>
+            <div><h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 4 }}>Finanzas</h1><p style={{ fontSize: 14, color: COLORES.textoSecundario }}>Control de operación — JMGC</p></div>
+            <button onClick={exportarRespaldo} title="Descargar copia de seguridad de los datos de este dispositivo" style={{ background: "transparent", color: COLORES.textoSecundario, border: `1px solid ${COLORES.borde}`, borderRadius: 6, padding: "8px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>⬇ Respaldo</button>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: `1px solid ${COLORES.borde}`, paddingBottom: 16 }}>
+            {[{ id: "libreta", label: "📖 Libretas" }, { id: "cruces", label: "🔀 Cruces" }, { id: "obligaciones", label: "📋 Obligaciones" }, { id: "pendientes", label: "✓ Pendientes" }].map((tab) => (
+              <button key={tab.id} onClick={() => setVista(tab.id)} style={{ background: vista === tab.id ? COLORES.acento : "transparent", color: vista === tab.id ? COLORES.fondo : COLORES.textoSecundario, padding: "10px 16px", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 14, transition: "all 0.2s" }}>{tab.label}</button>
+            ))}
+          </div>
+          {vista === "libreta" && <VistaLibreta data={{ cuentas, movimientos }} setMovimientos={setMovimientos} cuentaActiva={cuentaActiva} setCuentaActiva={setCuentaActiva} cuentas={cuentas} />}
+          {vista === "cruces" && <VistaCruces data={{ cuentas, obligaciones }} setData={setObligaciones} cuentas={cuentas} />}
+          {vista === "obligaciones" && <VistaObligaciones data={{ cuentas, obligaciones }} setData={setObligaciones} cuentas={cuentas} />}
+          {vista === "pendientes" && <VistaPendientes data={{ cuentas, movimientos, obligaciones, pendientes }} setData={setPendientes} cuentas={cuentas} />}
+        </div>
+      );
+    }
+
+    function VistaLibreta({ data, setMovimientos, cuentaActiva, setCuentaActiva, cuentas }) {
+      const fileInputRef = useRef(null);
+      const [modalEdicion, setModalEdicion] = useState(null);
+      const [edicionFecha, setEdicionFecha] = useState("");
+      const [edicionConcepto, setEdicionConcepto] = useState("");
+      const [edicionMonto, setEdicionMonto] = useState("");
+      const [edicionTipo, setEdicionTipo] = useState("recibi");
+      const [edicionMedio, setEdicionMedio] = useState("transferencia");
+      const [filtroMedio, setFiltroMedio] = useState("Todos");
+      const [fecha, setFecha] = useState(hoy());
+      const [concepto, setConcepto] = useState("");
+      const [monto, setMonto] = useState("");
+      const [tipo, setTipo] = useState("recibi");
+      const [medio, setMedio] = useState("transferencia");
+
+      const movimientosDeLibreta = data.movimientos.filter((m) => m.cuentaId === cuentaActiva);
+      const movimientosFiltrados = filtroMedio === "Todos" ? movimientosDeLibreta : movimientosDeLibreta.filter((m) => m.medio === filtroMedio.toLowerCase());
+      const ordenados = movimientosFiltrados.slice().sort((a, b) => (a.fecha === b.fecha ? (b.creado || 0) - (a.creado || 0) : a.fecha < b.fecha ? 1 : -1));
+      const totalRecibido = r2(movimientosFiltrados.filter((m) => m.tipo === "recibi").reduce((s, m) => s + m.monto, 0));
+      const totalEntregado = r2(movimientosFiltrados.filter((m) => m.tipo === "entregue").reduce((s, m) => s + m.monto, 0));
+      const saldoNeto = r2(totalRecibido - totalEntregado);
+      const marcas = {};
+      movimientosDeLibreta.forEach((m, i) => { const partes = []; if (movimientosDeLibreta.some((o, j) => j !== i && o.fecha === m.fecha && o.tipo === m.tipo && Math.abs(o.monto - m.monto) < 1)) partes.push("⚠ posible duplicado"); if (m.fecha > hoy()) partes.push("⚠ fecha futura"); if (partes.length > 0) marcas[m.id] = partes.join(" · "); });
+
+      const abrirEdicion = (mov) => {
+        setModalEdicion(mov.id);
+        setEdicionFecha(mov.fecha);
+        setEdicionConcepto(mov.concepto);
+        setEdicionMonto(String(mov.monto));
+        setEdicionTipo(mov.tipo);
+        setEdicionMedio(mov.medio);
+      };
+
+      const borrarMovimiento = (mov) => {
+        if (!window.confirm("¿Eliminar este movimiento?\n\n" + mov.fecha + " · " + mov.concepto + "\n" + (mov.tipo === "recibi" ? "Recibí " : "Entregué ") + mxn(mov.monto))) return;
+        setMovimientos((prev) => prev.filter((x) => x.id !== mov.id));
+      };
+
+      const guardarEdicion = async () => {
+        if (!modalEdicion) return;
+        const monto = parseFloat(String(edicionMonto).replace(/[^0-9.]/g, ""));
+        if (!monto) return;
+        const movActualizado = { id: modalEdicion, cuentaId: cuentaActiva, fecha: edicionFecha, concepto: edicionConcepto, monto, tipo: edicionTipo, medio: edicionMedio, creado: Date.now() };
+        await supabase.from("movimientos").update(movActualizado).eq("id", modalEdicion);
+        setMovimientos((prev) => prev.map((m) => (m.id === modalEdicion ? movActualizado : m)));
+        setModalEdicion(null);
+      };
+
+      const agregarMovimiento = async () => {
+        const m = parseFloat(String(monto).replace(/[^0-9.]/g, ""));
+        if (!m || !concepto.trim()) return;
+        const nuevoMov = { id: uid(), cuentaId: cuentaActiva, fecha, concepto: concepto.trim(), monto: m, tipo, medio, creado: Date.now() };
+        await supabase.from("movimientos").insert([nuevoMov]);
+        setMovimientos((prev) => [...prev, nuevoMov]);
+        setFecha(hoy());
+        setConcepto("");
+        setMonto("");
+        setTipo("recibi");
+        setMedio("transferencia");
+      };
+
+      const importarCSV = (e) => {
+        const archivo = e.target.files?.[0];
+        if (!archivo) return;
+        const lector = new FileReader();
+        lector.onload = async (evt) => {
+          const csv = evt.target?.result;
+          if (typeof csv !== "string") return;
+          const lineas = csv.trim().split(/\r?\n/);
+          if (lineas.length < 2) { window.alert("El CSV está vacío o solo trae el encabezado."); return; }
+          if ((lineas[0].match(/;/g) || []).length > (lineas[0].match(/,/g) || []).length) { window.alert("El CSV viene separado por punto y coma. Guárdalo como CSV separado por comas para que los montos no se lean mal."); return; }
+          const headers = partirLineaCSV(lineas[0]).map((h) => sinAcentos(h));
+          const indicesFecha = headers.indexOf("fecha");
+          const indicesConcepto = headers.indexOf("concepto");
+          const indicesMonto = headers.indexOf("monto");
+          const indicesTipo = headers.indexOf("tipo");
+          const indicesMedio = headers.indexOf("medio");
+          if (indicesFecha < 0 || indicesMonto < 0 || indicesTipo < 0) { window.alert("El CSV necesita las columnas fecha, monto y tipo (concepto y medio son opcionales). Encontré: " + headers.join(", ")); return; }
+          const nuevosMovimientos = [];
+          const omitidas = [];
+          for (let i = 1; i < lineas.length; i++) {
+            if (!lineas[i].trim()) continue;
+            const valores = partirLineaCSV(lineas[i]);
+            const f = fechaDeTexto(valores[indicesFecha]);
+            const c = valores[indicesConcepto] || "Importado";
+            const mo = montoDeTexto(valores[indicesMonto]);
+            const ti = tipoDeTexto(valores[indicesTipo]);
+            const me = (valores[indicesMedio] || "").toLowerCase() || "transferencia";
+            if (!f || !mo || !ti) { omitidas.push(i + 1); continue; }
+            nuevosMovimientos.push({ id: uid(), cuentaId: cuentaActiva, fecha: f, concepto: c, monto: mo, tipo: ti, medio: me, creado: Date.now() });
+          }
+          if (omitidas.length > 0) window.alert(omitidas.length + " filas del CSV NO se importaron (fecha, monto o tipo no reconocido; el tipo debe ser Recibí o Entregué). Líneas: " + omitidas.slice(0, 12).join(", ") + (omitidas.length > 12 ? "…" : ""));
+          if (nuevosMovimientos.length > 0) {
+            await supabase.from("movimientos").insert(nuevosMovimientos);
+            setMovimientos((prev) => [...prev, ...nuevosMovimientos]);
+          }
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        };
+        lector.readAsText(archivo);
+      };
+
+      const inp = { background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, padding: "10px 12px", fontSize: 13, color: COLORES.texto, borderRadius: 6, outline: "none" };
+
+      return (
+        <div>
+          <div style={{ display: "flex", gap: 12, marginBottom: 24, overflowX: "auto", paddingBottom: 8 }}>
+            {cuentas.map((c) => (
+              <button key={c.id} onClick={() => setCuentaActiva(c.id)} style={{ background: cuentaActiva === c.id ? COLORES.acento : COLORES.fondoCard, color: cuentaActiva === c.id ? COLORES.fondo : COLORES.texto, padding: "12px 16px", border: `1px solid ${cuentaActiva === c.id ? COLORES.acento : COLORES.borde}`, borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 14, whiteSpace: "nowrap", transition: "all 0.2s" }}>{c.nombre}</button>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acentoVerde}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 12, color: COLORES.textoSecundario, marginBottom: 8 }}>Total recibido</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: COLORES.acentoVerde }}>{mxn(totalRecibido)}</div>
+            </div>
+            <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acentoRojo}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 12, color: COLORES.textoSecundario, marginBottom: 8 }}>Total entregado</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: COLORES.acentoRojo }}>{mxn(totalEntregado)}</div>
+            </div>
+            <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acento}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 12, color: COLORES.textoSecundario, marginBottom: 8 }}>Saldo neto</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: saldoNeto >= 0 ? COLORES.acentoVerde : COLORES.acentoRojo }}>{mxn(saldoNeto)}</div><div style={{ fontSize: 12, marginTop: 6, color: saldoNeto > 0 ? COLORES.accentoOrange : saldoNeto < 0 ? COLORES.acentoVerde : COLORES.textoSecundario }}>{saldoNeto > 0 ? "Le debes " + mxn(saldoNeto) : saldoNeto < 0 ? "Te debe " + mxn(-saldoNeto) : "Sin saldo"}</div>
+            </div>
+          </div>
+
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Agregar movimiento</h3>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Fecha</label><input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} style={{ ...inp, width: 140 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input placeholder="Nómina, entrega..." value={concepto} onChange={(e) => setConcepto(e.target.value)} style={{ ...inp, width: 200 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input placeholder="0.00" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inp, width: 120 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Tipo</label><select value={tipo} onChange={(e) => setTipo(e.target.value)} style={{ ...inp, width: 120 }}><option value="recibi">Recibí</option><option value="entregue">Entregué</option></select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Medio</label><select value={medio} onChange={(e) => setMedio(e.target.value)} style={{ ...inp, width: 140 }}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="deuda">Deuda</option><option value="nómina">Nómina</option></select></div>
+              <button onClick={agregarMovimiento} style={{ background: COLORES.acento, color: COLORES.fondo, padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontWeight: 600, border: "none", alignSelf: "flex-end" }}>✏️ Anotar</button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            {["Todos", "Transferencia", "Efectivo", "Deuda"].map((m) => (
+              <button key={m} onClick={() => setFiltroMedio(m)} style={{ background: filtroMedio === m ? COLORES.acento : COLORES.fondoCard, color: filtroMedio === m ? COLORES.fondo : COLORES.texto, padding: "8px 12px", border: `1px solid ${filtroMedio === m ? COLORES.acento : COLORES.borde}`, borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{m}</button>
+            ))}
+          </div>
+
+          <button onClick={() => fileInputRef.current?.click()} style={{ background: COLORES.accentoOrange, color: COLORES.fondo, padding: "10px 16px", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, marginBottom: 20 }}>📤 Importar CSV</button>
+          <input ref={fileInputRef} type="file" accept=".csv" onChange={importarCSV} style={{ display: "none" }} />
+
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr style={{ borderBottom: `1px solid ${COLORES.borde}`, background: COLORES.fondoHover }}><th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600, color: COLORES.textoSecundario }}>Fecha</th><th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600, color: COLORES.textoSecundario }}>Concepto</th><th style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600, color: COLORES.textoSecundario }}>Recibí</th><th style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600, color: COLORES.textoSecundario }}>Entregué</th><th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 600, color: COLORES.textoSecundario }}>Medio</th><th style={{ padding: "12px 16px", textAlign: "center", fontWeight: 600, color: COLORES.textoSecundario }}>Acción</th></tr></thead>
+              <tbody>{ordenados.map((mov) => (<tr key={mov.id} style={{ borderBottom: `1px solid ${COLORES.borde}` }}><td style={{ padding: "12px 16px", color: COLORES.textoSecundario }}>{mov.fecha}</td><td style={{ padding: "12px 16px" }}>{mov.concepto}{marcas[mov.id] && <div style={{ fontSize: 11, color: COLORES.accentoOrange, marginTop: 2 }}>{marcas[mov.id]}</div>}</td><td style={{ padding: "12px 16px", textAlign: "right", color: COLORES.acentoVerde, fontWeight: 600 }}>{mov.tipo === "recibi" ? mxn(mov.monto) : ""}</td><td style={{ padding: "12px 16px", textAlign: "right", color: COLORES.acentoRojo, fontWeight: 600 }}>{mov.tipo === "entregue" ? mxn(mov.monto) : ""}</td><td style={{ padding: "12px 16px", textAlign: "center", fontSize: 12, color: COLORES.textoSecundario }}>{mov.medio}</td><td style={{ padding: "12px 16px", textAlign: "center", whiteSpace: "nowrap" }}><button onClick={() => abrirEdicion(mov)} title="Editar" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}>✏️</button><button onClick={() => borrarMovimiento(mov)} title="Eliminar" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button></td></tr>))}</tbody>
+            </table>
+          </div>
+
+          {modalEdicion && (
+            <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+              <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 24, maxWidth: 500, width: "90%" }}>
+                <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Editar movimiento</h3>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Fecha</label><input type="date" value={edicionFecha} onChange={(e) => setEdicionFecha(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }} /></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input value={edicionConcepto} onChange={(e) => setEdicionConcepto(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }} /></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input type="number" value={edicionMonto} onChange={(e) => setEdicionMonto(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }} /></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Tipo</label><select value={edicionTipo} onChange={(e) => setEdicionTipo(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }}><option value="recibi">Recibí</option><option value="entregue">Entregué</option></select></div>
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 12, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Medio</label><select value={edicionMedio} onChange={(e) => setEdicionMedio(e.target.value)} style={{ width: "100%", padding: "10px 12px", background: COLORES.fondo, border: `1px solid ${COLORES.borde}`, borderRadius: 6, color: COLORES.texto }}><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="deuda">Deuda</option><option value="nómina">Nómina</option></select></div>
+                <div style={{ display: "flex", gap: 12 }}><button onClick={guardarEdicion} style={{ flex: 1, background: COLORES.acento, color: COLORES.fondo, padding: "12px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600 }}>Guardar</button><button onClick={() => setModalEdicion(null)} style={{ flex: 1, background: COLORES.borde, color: COLORES.texto, padding: "12px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600 }}>Cancelar</button></div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function VistaCruces({ data, setData, cuentas }) {
+      const [de, setDe] = useState(cuentas?.[5]?.id);
+      const [a, setA] = useState(cuentas?.[0]?.id);
+      const [monto, setMonto] = useState("");
+      const [concepto, setConcepto] = useState("");
+      const agregarCruce = async () => {
+        const n = parseFloat(String(monto).replace(/[^0-9.]/g, ""));
+        if (!n || !de || !a || de === a) return;
+        const nuevoObligo = { id: uid(), de, a, monto: n, concepto: concepto.trim() || "Cruce", hecho: false };
+        await supabase.from("obligaciones").insert([nuevoObligo]);
+        setMonto("");
+        setConcepto("");
+      };
+      const inp = { background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, padding: "10px 12px", fontSize: 13, color: COLORES.texto, borderRadius: 6, outline: "none" };
+      return (
+        <div><h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Cruces</h2><p style={{ fontSize: 14, color: COLORES.textoSecundario, marginBottom: 24 }}>Dinero que se mueve entre cuentas</p>
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>De</label><select value={de} onChange={(e) => setDe(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>A</label><select value={a} onChange={(e) => setA(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input placeholder="0.00" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inp, width: 140 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input placeholder="Transferencia..." value={concepto} onChange={(e) => setConcepto(e.target.value)} style={{ ...inp, width: 200 }} /></div>
+              <button onClick={agregarCruce} style={{ background: COLORES.acento, color: COLORES.fondo, padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontWeight: 600, border: "none", alignSelf: "flex-end" }}>Registrar</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function VistaObligaciones({ data, setData, cuentas }) {
+      const [de, setDe] = useState(cuentas?.[5]?.id);
+      const [a, setA] = useState(cuentas?.[0]?.id);
+      const [monto, setMonto] = useState("");
+      const [concepto, setConcepto] = useState("");
+      const agregarCruce = async () => {
+        const n = parseFloat(String(monto).replace(/[^0-9.]/g, ""));
+        if (!n || !de || !a || de === a) return;
+        const nuevoObligo = { id: uid(), de, a, monto: n, concepto: concepto.trim() || "Cruce", hecho: false };
+        await supabase.from("obligaciones").insert([nuevoObligo]);
+        setMonto("");
+        setConcepto("");
+      };
+      const inp = { background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, padding: "10px 12px", fontSize: 13, color: COLORES.texto, borderRadius: 6, outline: "none" };
+      return (
+        <div><h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Obligaciones</h2><p style={{ fontSize: 14, color: COLORES.textoSecundario, marginBottom: 24 }}>Deudas a pagar</p>
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>De</label><select value={de} onChange={(e) => setDe(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>A</label><select value={a} onChange={(e) => setA(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input placeholder="0.00" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inp, width: 140 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input placeholder="Transferencia..." value={concepto} onChange={(e) => setConcepto(e.target.value)} style={{ ...inp, width: 200 }} /></div>
+              <button onClick={agregarCruce} style={{ background: COLORES.acento, color: COLORES.fondo, padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontWeight: 600, border: "none", alignSelf: "flex-end" }}>Registrar</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function VistaPendientes({ data, setData, cuentas }) {
+      const [de, setDe] = useState(cuentas?.[5]?.id);
+      const [a, setA] = useState(cuentas?.[0]?.id);
+      const [monto, setMonto] = useState("");
+      const [concepto, setConcepto] = useState("");
+      const agregarPendiente = async () => {
+        const n = parseFloat(String(monto).replace(/[^0-9.]/g, ""));
+        if (!n || !de || !a || de === a) return;
+        const nuevoPendiente = { id: uid(), de, a, monto: n, concepto: concepto.trim() || "Pendiente", hecho: false };
+        await supabase.from("pendientes").insert([nuevoPendiente]);
+        setMonto("");
+        setConcepto("");
+      };
+      const marcarHecho = async (id, actual) => {
+        await supabase.from("pendientes").update({ hecho: !actual }).eq("id", id);
+      };
+      const borrarPendiente = async (id) => {
+        await supabase.from("pendientes").delete().eq("id", id);
+      };
+      const pendientesActivos = (data?.pendientes || []).filter((p) => !p.hecho);
+      const pendientesHechos = (data?.pendientes || []).filter((p) => p.hecho);
+      const totalPendiente = pendientesActivos.reduce((s, p) => s + p.monto, 0);
+      const inp = { background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, padding: "10px 12px", fontSize: 13, color: COLORES.texto, borderRadius: 6, outline: "none" };
+      return (
+        <div><h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Pendientes de liquidar</h2><p style={{ fontSize: 14, color: COLORES.textoSecundario, marginBottom: 24 }}>Lleva control de lo que tienes que transferir</p>
+          <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>De</label><select value={de} onChange={(e) => setDe(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>A</label><select value={a} onChange={(e) => setA(e.target.value)} style={{ ...inp, width: 180 }}>{cuentas?.map((c) => (<option key={c.id} value={c.id}>{c.nombre}</option>))}</select></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Monto</label><input placeholder="0.00" value={monto} onChange={(e) => setMonto(e.target.value)} style={{ ...inp, width: 140 }} /></div>
+              <div><label style={{ fontSize: 11, color: COLORES.textoSecundario, display: "block", marginBottom: 6 }}>Concepto</label><input placeholder="Transferencia, pago..." value={concepto} onChange={(e) => setConcepto(e.target.value)} style={{ ...inp, width: 200 }} /></div>
+              <button onClick={agregarPendiente} style={{ background: COLORES.acento, color: COLORES.fondo, padding: "10px 20px", borderRadius: 6, cursor: "pointer", fontWeight: 600, border: "none", alignSelf: "flex-end" }}>Agregar</button>
+            </div>
+          </div>
+          {pendientesActivos.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: COLORES.acentoRojo }}>Pendientes ({pendientesActivos.length}) — {mxn(totalPendiente)}</h3>
+              <div style={{ background: COLORES.fondoCard, border: `2px solid ${COLORES.acentoRojo}`, borderRadius: 12, overflow: "hidden" }}>
+                {pendientesActivos.map((p) => {
+                  const deNombre = cuentas?.find((c) => c.id === p.de)?.nombre;
+                  const aNombre = cuentas?.find((c) => c.id === p.a)?.nombre;
+                  return (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `1px solid ${COLORES.borde}` }}>
+                      <input type="checkbox" checked={false} onChange={() => marcarHecho(p.id, false)} style={{ cursor: "pointer", width: 18, height: 18 }} />
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600 }}>{deNombre} → {aNombre}</div><div style={{ fontSize: 12, color: COLORES.textoSecundario }}>{p.concepto}</div></div>
+                      <span style={{ fontSize: 16, color: COLORES.acentoRojo, fontWeight: 700, minWidth: 120, textAlign: "right" }}>{mxn(p.monto)}</span>
+                      <button onClick={() => borrarPendiente(p.id)} style={{ background: "none", border: "none", color: COLORES.borde, cursor: "pointer" }}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {pendientesHechos.length > 0 && (
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: COLORES.acentoVerde }}>Completados ({pendientesHechos.length})</h3>
+              <div style={{ background: COLORES.fondoCard, border: `1px solid ${COLORES.borde}`, borderRadius: 12, overflow: "hidden", opacity: 0.6 }}>
+                {pendientesHechos.map((p) => {
+                  const deNombre = cuentas?.find((c) => c.id === p.de)?.nombre;
+                  const aNombre = cuentas?.find((c) => c.id === p.a)?.nombre;
+                  return (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `1px solid ${COLORES.borde}`, textDecoration: "line-through" }}>
+                      <input type="checkbox" checked={true} onChange={() => marcarHecho(p.id, true)} style={{ cursor: "pointer", width: 18, height: 18 }} />
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 14 }}>{deNombre} → {aNombre}</div><div style={{ fontSize: 12, color: COLORES.textoSecundario }}>{p.concepto}</div></div>
+                      <span style={{ fontSize: 14, minWidth: 120, textAlign: "right" }}>{mxn(p.monto)}</span>
+                      <button onClick={() => borrarPendiente(p.id)} style={{ background: "none", border: "none", color: COLORES.borde, cursor: "pointer" }}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<FinanzasApp />);
+  </script>
+</body>
+</html>
