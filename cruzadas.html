@@ -34,10 +34,13 @@ const ENTIDADES_INICIALES = [
   { id: "troncoso", nombre: "Materiales Troncoso", tipo: "mio" },
   { id: "cemcoyaa", nombre: "Abastecedora Cemcoyaa", tipo: "mio" },
   { id: "itzayana", nombre: "Itzayana", tipo: "mio" },
-  { id: "hermano", nombre: "Hermano", tipo: "otro" },
-  { id: "primo", nombre: "Primo", tipo: "otro" },
-  { id: "papa", nombre: "Papá", tipo: "otro" },
+  { id: "hermano", nombre: "Hermano", tipo: "otro", categoria: "familiar" },
+  { id: "primo", nombre: "Primo", tipo: "otro", categoria: "cliente" },
+  { id: "papa", nombre: "Papá", tipo: "otro", categoria: "familiar" },
 ];
+
+const CATEGORIAS = [["cliente", "Cliente"], ["familiar", "Familiar"], ["prestamo", "Préstamo"], ["deuda", "Deuda"]];
+const categoriaDe = (e) => (CATEGORIAS.find((c) => c[0] === (e || {}).categoria) || [])[1] || "";
 
 const CUENTAS_INICIALES = [
   { id: "c1", entidad: "personal", nombre: "Tarjeta personal" },
@@ -55,6 +58,134 @@ const fmt = (n) =>
 
 const hoy = () => new Date().toISOString().slice(0, 10);
 
+const fmtS = (n) => (n < 0 ? "−" : "") + fmt(Math.abs(n));
+
+const fechaMX = (f) => (f ? String(f).split("-").reverse().join("/") : "");
+
+const envolver = (ctx, texto, ancho, maxLineas) => {
+  const palabras = String(texto).split(/\s+/);
+  const lineas = [];
+  let actual = "";
+  palabras.forEach((p) => {
+    const prueba = actual ? actual + " " + p : p;
+    if (!actual || ctx.measureText(prueba).width <= ancho) actual = prueba;
+    else { lineas.push(actual); actual = p; }
+  });
+  if (actual) lineas.push(actual);
+  if (lineas.length <= maxLineas) return lineas;
+  const corte = lineas.slice(0, maxLineas);
+  let u = corte[maxLineas - 1];
+  while (u.length > 1 && ctx.measureText(u + "…").width > ancho) u = u.slice(0, -1);
+  corte[maxLineas - 1] = u + "…";
+  return corte;
+};
+
+const textoEstado = (nombre, filas, saldo, multi, nombreDe) => {
+  const l = ["*ESTADO DE CUENTA — " + nombre + "*", "Al " + fechaMX(hoy()), ""];
+  filas.forEach((f) => {
+    l.push(
+      fechaMX(f.m.fecha) + " · " + f.m.desc + (multi ? " · con " + nombreDe(f.otro) : "") + " · " +
+        (f.delta > 0 ? "cargo " : "abono ") + fmt(Math.abs(f.delta)) + " · saldo " + fmtS(f.saldo)
+    );
+  });
+  l.push("");
+  l.push(saldo > 0 ? "*Saldo a pagar: " + fmt(saldo) + "*" : saldo < 0 ? "*Saldo a favor de " + nombre + ": " + fmt(-saldo) + "*" : "*Sin saldo pendiente*");
+  return l.join("\n");
+};
+
+const dibujarEstado = (nombre, etiqueta, filas, saldo, multi, nombreDe) => {
+  const W = 900;
+  const pad = 40;
+  const esc = 2;
+  const medir = document.createElement("canvas").getContext("2d");
+  medir.font = "13px Arial";
+  const dib = filas.map((f) => {
+    const lineas = envolver(medir, f.m.desc + (multi ? " · con " + nombreDe(f.otro) : ""), 410, 3);
+    return { f, lineas, alto: Math.max(40, lineas.length * 17 + 14) };
+  });
+  const altoTabla = Math.max(dib.reduce((s, r) => s + r.alto, 0), 40);
+  const alto = 220 + altoTabla + 130;
+  const canvas = document.createElement("canvas");
+  canvas.width = W * esc;
+  canvas.height = alto * esc;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(esc, esc);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, W, alto);
+  ctx.fillStyle = T.azul;
+  ctx.fillRect(0, 0, W, 90);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "bold 28px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("ESTADO DE CUENTA", pad, 56);
+  ctx.fillStyle = T.ink;
+  ctx.font = "bold 22px Arial";
+  ctx.fillText(nombre, pad, 135);
+  ctx.fillStyle = T.gris;
+  ctx.font = "14px Arial";
+  ctx.fillText((etiqueta ? etiqueta + " · " : "") + "al " + fechaMX(hoy()), pad, 160);
+  const yT = 190;
+  ctx.fillStyle = T.azulSuave;
+  ctx.fillRect(pad, yT, W - 2 * pad, 30);
+  ctx.fillStyle = T.azul;
+  ctx.font = "bold 12px Arial";
+  ctx.fillText("FECHA", pad + 10, yT + 20);
+  ctx.fillText("CONCEPTO", 150, yT + 20);
+  ctx.textAlign = "right";
+  ctx.fillText("CARGO", 650, yT + 20);
+  ctx.fillText("ABONO", 755, yT + 20);
+  ctx.fillText("SALDO", W - pad - 10, yT + 20);
+  let y = yT + 30;
+  if (dib.length === 0) {
+    ctx.textAlign = "left";
+    ctx.fillStyle = T.gris;
+    ctx.font = "13px Arial";
+    ctx.fillText("Sin movimientos.", pad + 10, y + 26);
+    y += 40;
+  }
+  dib.forEach((r) => {
+    ctx.textAlign = "left";
+    ctx.fillStyle = T.gris;
+    ctx.font = "12px Arial";
+    ctx.fillText(fechaMX(r.f.m.fecha), pad + 10, y + 24);
+    ctx.fillStyle = T.ink;
+    ctx.font = "13px Arial";
+    r.lineas.forEach((ln, i) => ctx.fillText(ln, 150, y + 24 + i * 17));
+    ctx.textAlign = "right";
+    if (r.f.delta > 0) {
+      ctx.fillStyle = T.ink;
+      ctx.fillText(fmt(r.f.delta), 650, y + 24);
+    } else {
+      ctx.fillStyle = T.ok;
+      ctx.fillText(fmt(-r.f.delta), 755, y + 24);
+    }
+    ctx.fillStyle = T.ink;
+    ctx.font = "bold 13px Arial";
+    ctx.fillText(fmtS(r.f.saldo), W - pad - 10, y + 24);
+    ctx.strokeStyle = T.linea;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad, y + r.alto);
+    ctx.lineTo(W - pad, y + r.alto);
+    ctx.stroke();
+    y += r.alto;
+  });
+  y += 34;
+  ctx.textAlign = "left";
+  ctx.fillStyle = T.azul;
+  ctx.font = "bold 20px Arial";
+  ctx.fillText(saldo > 0 ? "SALDO A PAGAR" : saldo < 0 ? "SALDO A FAVOR DE " + nombre.toUpperCase() : "SIN SALDO PENDIENTE", pad, y);
+  if (saldo !== 0) {
+    ctx.textAlign = "right";
+    ctx.fillText(fmt(Math.abs(saldo)), W - pad, y);
+  }
+  ctx.textAlign = "left";
+  ctx.fillStyle = T.gris;
+  ctx.font = "12px Arial";
+  ctx.fillText("Generado el " + fechaMX(hoy()), pad, y + 36);
+  return canvas;
+};
+
 function FinanzasCruzadas() {
   const [entidades, setEntidades] = useState(ENTIDADES_INICIALES);
   const [cuentas, setCuentas] = useState(CUENTAS_INICIALES);
@@ -68,6 +199,9 @@ function FinanzasCruzadas() {
   const [guardado, setGuardado] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [pegado, setPegado] = useState("");
+  const [nuevaCat, setNuevaCat] = useState("cliente");
+  const [estadoId, setEstadoId] = useState(null);
+  const [avisoEstado, setAvisoEstado] = useState(null);
 
   const [f, setF] = useState({
     fecha: hoy(),
@@ -96,7 +230,7 @@ function FinanzasCruzadas() {
           ENTIDADES_INICIALES.forEach((e) => {
             const ya = entFusion.find((x) => x.id === e.id);
             if (!ya) entFusion.push(e);
-            else ya.tipo = e.tipo; // sincroniza mía/externo con la versión actual
+            else { ya.tipo = e.tipo; if (!ya.categoria && e.categoria) ya.categoria = e.categoria; } // sincroniza mía/externo con la versión actual
           });
           setEntidades(entFusion);
           const ctasGuardadas = d.cuentas && d.cuentas.length ? d.cuentas : [];
@@ -180,7 +314,7 @@ function FinanzasCruzadas() {
       return { lista, agregados, existentes };
     };
     const rEnt = unir(entidades, d.entidades, (x) =>
-      esTexto(x.id) && esTexto(x.nombre) ? { id: x.id, nombre: x.nombre.trim(), tipo: x.tipo === "mio" ? "mio" : "otro" } : null);
+      esTexto(x.id) && esTexto(x.nombre) ? { id: x.id, nombre: x.nombre.trim(), tipo: x.tipo === "mio" ? "mio" : "otro", categoria: CATEGORIAS.some((c) => c[0] === x.categoria) ? x.categoria : undefined } : null);
     const idsEnt = new Set(rEnt.lista.map((x) => x.id));
     const rCta = unir(cuentas, d.cuentas, (x) =>
       esTexto(x.id) && esTexto(x.nombre) && idsEnt.has(x.entidad) ? { id: x.id, entidad: x.entidad, nombre: x.nombre.trim() } : null);
@@ -266,10 +400,16 @@ function FinanzasCruzadas() {
     const n = nuevaEnt.trim();
     if (!n) return;
     const id = "e" + Date.now();
-    const nuevas = [...entidades, { id, nombre: n, tipo: "otro" }];
+    const nuevas = [...entidades, { id, nombre: n, tipo: "otro", categoria: nuevaCat }];
     setEntidades(nuevas);
     persistir({ entidades: nuevas });
     setNuevaEnt("");
+  };
+
+  const cambiarCategoria = (id, categoria) => {
+    const nuevas = entidades.map((e) => (e.id === id ? { ...e, categoria: categoria || undefined } : e));
+    setEntidades(nuevas);
+    persistir({ entidades: nuevas });
   };
 
   const addCuenta = () => {
@@ -399,6 +539,66 @@ function FinanzasCruzadas() {
   const otros = entidades.filter((e) => e.tipo !== "mio");
 
   const esMia = (id) => (entDe(id) || {}).tipo === "mio";
+  const nombreDe = (id) => (entDe(id) || {}).nombre || "";
+
+  // Saldo de una persona frente a TODAS mis entidades: positivo = te debe, negativo = le debes
+  const estadoDe = (xid) => {
+    const filas = [];
+    movs.slice().reverse().forEach((m) => {
+      if (m.pagador === m.corresponde) return;
+      let otro = null;
+      let delta = 0;
+      if (m.tipo === "gasto") {
+        if (m.corresponde === xid) { otro = m.pagador; delta = m.monto; }
+        else if (m.pagador === xid) { otro = m.corresponde; delta = -m.monto; }
+      } else if (m.tipo === "transferencia") {
+        if (m.pagador === xid) { otro = m.corresponde; delta = -m.monto; }
+        else if (m.corresponde === xid) { otro = m.pagador; delta = m.monto; }
+      } else if (m.tipo === "ingreso") {
+        if (m.pagador === xid) { otro = m.corresponde; delta = m.monto; }
+        else if (m.corresponde === xid) { otro = m.pagador; delta = -m.monto; }
+      }
+      if (otro === null || !esMia(otro)) return;
+      filas.push({ m, otro, delta });
+    });
+    filas.sort((a, b) => (a.m.fecha < b.m.fecha ? -1 : a.m.fecha > b.m.fecha ? 1 : 0));
+    let acc = 0;
+    filas.forEach((f) => {
+      acc = Math.round((acc + f.delta) * 100) / 100;
+      f.saldo = acc;
+    });
+    return { filas, saldo: acc };
+  };
+
+  const selEnt = otros.find((e) => e.id === estadoId) || null;
+  const est = selEnt ? estadoDe(selEnt.id) : null;
+  const multi = est ? new Set(est.filas.map((f) => f.otro)).size > 1 : false;
+
+  const bajarEstadoPNG = () => {
+    const canvas = dibujarEstado(selEnt.nombre, categoriaDe(selEnt), est.filas, est.saldo, multi, nombreDe);
+    canvas.toBlob((blob) => {
+      if (!blob) { setAvisoEstado({ tipo: "error", texto: "No se pudo generar la imagen." }); return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "estado-de-cuenta-" + selEnt.nombre.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + hoy() + ".png";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setAvisoEstado({ tipo: "ok", texto: "Imagen descargada. Mándala por WhatsApp desde tus descargas." });
+    }, "image/png");
+  };
+
+  const copiarTextoEstado = async () => {
+    const texto = textoEstado(selEnt.nombre, est.filas, est.saldo, multi, nombreDe);
+    try {
+      await navigator.clipboard.writeText(texto);
+      setAvisoEstado({ tipo: "ok", texto: "Texto copiado. Pégalo en WhatsApp." });
+    } catch (e) {
+      window.prompt("Copia este texto:", texto);
+    }
+  };
 
   const addPendiente = () => {
     if (!nuevoPend.desc.trim() || !nuevoPend.monto || Number(nuevoPend.monto) <= 0) return;
@@ -460,6 +660,7 @@ function FinanzasCruzadas() {
         {[
           ["registrar", "Registrar"],
           ["cruces", "Cruces"],
+          ["estados", "Estados"],
           ["resumen", "Resumen"],
           ["directorio", "Directorio"],
         ].map(([id, lbl]) => (
@@ -839,6 +1040,66 @@ function FinanzasCruzadas() {
           </>
         )}
 
+        {/* ─── ESTADOS DE CUENTA ─── */}
+        {tab === "estados" && (
+          <>
+            <div style={st.label}>Toca una persona para ver su estado de cuenta</div>
+            {otros.map((e) => {
+              const r = estadoDe(e.id);
+              const activo = e.id === estadoId;
+              return (
+                <button
+                  key={e.id}
+                  onClick={() => { setEstadoId(e.id); setAvisoEstado(null); }}
+                  style={{ ...st.card, width: "100%", textAlign: "left", cursor: "pointer", fontFamily: "inherit", color: T.ink, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, borderLeft: "4px solid " + (activo ? T.azul : T.linea), background: activo ? T.azulSuave : T.card }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{e.nombre}</div>
+                    <div style={{ fontSize: 12, color: T.gris }}>{(categoriaDe(e) || "sin tipo") + " · " + r.filas.length + (r.filas.length === 1 ? " movimiento" : " movimientos")}</div>
+                  </div>
+                  <div className="mono" style={{ fontWeight: 600, fontSize: 14, textAlign: "right", whiteSpace: "nowrap", color: r.saldo > 0 ? T.ok : r.saldo < 0 ? T.alerta : T.gris }}>
+                    {r.saldo > 0 ? "te debe " + fmt(r.saldo) : r.saldo < 0 ? "le debes " + fmt(-r.saldo) : "sin saldo"}
+                  </div>
+                </button>
+              );
+            })}
+
+            {selEnt && est && (
+              <div style={{ ...st.card, marginTop: 16 }}>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>Estado de cuenta · {selEnt.nombre}</div>
+                <div style={{ fontSize: 12, color: T.gris, marginBottom: 10 }}>{(categoriaDe(selEnt) ? categoriaDe(selEnt) + " · " : "") + "al " + fechaMX(hoy())}</div>
+                {est.filas.length === 0 && <div style={{ fontSize: 14, color: T.gris }}>Sin movimientos con esta persona todavía.</div>}
+                {est.filas.map((f) => (
+                  <div key={f.m.id} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: "1px solid " + T.linea, fontSize: 13 }}>
+                    <div className="mono" style={{ width: 78, flexShrink: 0, color: T.gris, fontSize: 12 }}>{fechaMX(f.m.fecha)}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div>{f.m.desc}</div>
+                      {multi && <div style={{ fontSize: 11, color: T.gris }}>{"con " + nombreDe(f.otro)}</div>}
+                    </div>
+                    <div className="mono" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <div style={{ color: f.delta > 0 ? T.ink : T.ok }}>{(f.delta > 0 ? "+" : "−") + fmt(Math.abs(f.delta))}</div>
+                      <div style={{ fontSize: 11, color: T.gris }}>{fmtS(f.saldo)}</div>
+                    </div>
+                  </div>
+                ))}
+                <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 6, background: T.azulSuave, color: T.azul, fontSize: 15, fontWeight: 800, display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <span>{est.saldo > 0 ? "Saldo a pagar" : est.saldo < 0 ? "Saldo a favor de " + selEnt.nombre : "Sin saldo pendiente"}</span>
+                  <span className="mono">{est.saldo === 0 ? "" : fmt(Math.abs(est.saldo))}</span>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                  <button onClick={bajarEstadoPNG} style={st.btnAzul}>🖼 Descargar imagen</button>
+                  <button onClick={copiarTextoEstado} style={{ ...st.btnAzul, background: T.azulSuave, color: T.azul }}>💬 Copiar para WhatsApp</button>
+                </div>
+                {avisoEstado && (
+                  <div style={{ marginTop: 10, fontSize: 13, padding: "8px 10px", borderRadius: 6, background: avisoEstado.tipo === "error" ? "#FBEEE7" : "#E7F1EA", color: avisoEstado.tipo === "error" ? T.alerta : T.ok, border: "1px solid " + (avisoEstado.tipo === "error" ? T.alerta : T.ok) }}>
+                    {avisoEstado.texto}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
         {/* ─── RESUMEN ─── */}
         {tab === "resumen" && (
           <>
@@ -883,7 +1144,18 @@ function FinanzasCruzadas() {
               {entidades.map((e) => (
                 <div key={e.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid " + T.linea, fontSize: 14 }}>
                   <span>{e.nombre}</span>
-                  <span style={{ color: T.gris, fontSize: 12 }}>{e.tipo === "mio" ? "mía" : "externo"}</span>
+                  <span style={{ color: T.gris, fontSize: 12 }}>{e.tipo === "mio" ? "mía" : (
+                      <select
+                        value={e.categoria || ""}
+                        onChange={(ev) => cambiarCategoria(e.id, ev.target.value)}
+                        style={{ border: "1px solid " + T.linea, borderRadius: 6, background: T.card, color: T.ink, fontSize: 12, padding: "2px 4px", fontFamily: "inherit" }}
+                      >
+                        <option value="">sin tipo</option>
+                        {CATEGORIAS.map(([v, l]) => (
+                          <option key={v} value={v}>{l}</option>
+                        ))}
+                      </select>
+                    )}</span>
                 </div>
               ))}
               <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -893,6 +1165,11 @@ function FinanzasCruzadas() {
                   onChange={(e) => setNuevaEnt(e.target.value)}
                   style={{ ...st.input, flex: 1 }}
                 />
+                <select value={nuevaCat} onChange={(e) => setNuevaCat(e.target.value)} style={{ ...st.input, width: "auto" }}>
+                  {CATEGORIAS.map(([v, l]) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
                 <button onClick={addEntidad} style={st.btnAzul}>+</button>
               </div>
             </div>
